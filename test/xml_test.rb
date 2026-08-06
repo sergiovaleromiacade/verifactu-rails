@@ -205,9 +205,104 @@ class XmlTest < Minitest::Test
     assert_raises(ArgumentError) { sistema(multi_ot: false, multiples_ot: true) }
   end
 
-  def test_las_rectificativas_fallan_en_vez_de_emitir_algo_incompleto
-    error = assert_raises(NotImplementedError) { alta(tipo_factura: 'R1') }
-    assert_match(/rectificativa/, error.message)
+  # --- rectificativas --------------------------------------------------------
+
+  def rectificada
+    IdFactura.new(id_emisor: 'B12345678', num_serie: 'FA/2026/0001',
+                  fecha_expedicion: Date.new(2026, 8, 1))
+  end
+
+  def rectificativa(**extra)
+    alta(tipo_factura: 'R1', num_serie: 'RE/2026/0001',
+         facturas_rectificadas: [rectificada], **extra)
+  end
+
+  def sustitutiva(**extra)
+    rectificativa(tipo_rectificativa: 'S',
+                  importe_rectificacion: ImporteRectificacion.new(
+                    base: BigDecimal('100.00'), cuota: BigDecimal('21.00')
+                  ), **extra)
+  end
+
+  def test_una_rectificativa_sustitutiva_valida_contra_el_xsd
+    assert_empty Esquema.errores(envio([[sustitutiva, nil]]))
+  end
+
+  def test_una_rectificativa_incremental_valida_contra_el_xsd
+    assert_empty Esquema.errores(envio([[rectificativa(tipo_rectificativa: 'I'), nil]]))
+  end
+
+  def test_una_f3_con_facturas_sustituidas_valida_contra_el_xsd
+    registro = alta(tipo_factura: 'F3', facturas_sustituidas: [rectificada])
+    assert_empty Esquema.errores(envio([[registro, nil]]))
+  end
+
+  # El orden de la <sequence> del esquema no perdona.
+  def test_los_campos_de_rectificacion_van_en_el_orden_del_esquema
+    doc = Nokogiri::XML(envio([[sustitutiva, nil]]))
+    nombres = doc.at_xpath('//sf:RegistroAlta', 'sf' => SF).element_children.map(&:name)
+    interes = %w[TipoFactura TipoRectificativa FacturasRectificadas
+                 ImporteRectificacion DescripcionOperacion]
+
+    assert_equal interes, nombres.select { |n| interes.include?(n) }
+  end
+
+  # Una rectificativa sigue siendo un alta: su huella se encadena igual.
+  def test_la_huella_de_una_rectificativa_resiste_el_recalculo
+    doc = Nokogiri::XML(envio([[sustitutiva, anterior]]))
+    recalculada, declarada = recalcular_como_la_aeat(doc)
+
+    assert_equal recalculada, declarada
+  end
+
+  def test_una_rectificativa_exige_tipo_rectificativa
+    error = assert_raises(ArgumentError) do
+      alta(tipo_factura: 'R1', facturas_rectificadas: [rectificada])
+    end
+    assert_match(/tipo_rectificativa/, error.message)
+  end
+
+  def test_una_rectificativa_exige_saber_que_factura_rectifica
+    error = assert_raises(ArgumentError) do
+      alta(tipo_factura: 'R1', tipo_rectificativa: 'I')
+    end
+    assert_match(/facturas_rectificadas/, error.message)
+  end
+
+  def test_una_factura_normal_no_admite_campos_de_rectificacion
+    assert_raises(ArgumentError) { alta(tipo_rectificativa: 'S') }
+    assert_raises(ArgumentError) { alta(facturas_rectificadas: [rectificada]) }
+  end
+
+  def test_una_sustitutiva_exige_declarar_lo_sustituido
+    error = assert_raises(ArgumentError) { rectificativa(tipo_rectificativa: 'S') }
+    assert_match(/importe_rectificacion/, error.message)
+  end
+
+  # Sus propios importes ya son la diferencia: no hay nada que sustituir.
+  def test_una_incremental_no_admite_importe_rectificacion
+    error = assert_raises(ArgumentError) do
+      rectificativa(tipo_rectificativa: 'I',
+                    importe_rectificacion: ImporteRectificacion.new(
+                      base: BigDecimal('100.00'), cuota: BigDecimal('21.00')
+                    ))
+    end
+    assert_match(/incremental/, error.message)
+  end
+
+  def test_f3_exige_facturas_sustituidas_y_el_resto_no_las_admite
+    assert_raises(ArgumentError) { alta(tipo_factura: 'F3') }
+    assert_raises(ArgumentError) { alta(facturas_sustituidas: [rectificada]) }
+  end
+
+  def test_rechaza_un_tipo_rectificativa_desconocido
+    assert_raises(ArgumentError) { rectificativa(tipo_rectificativa: 'X') }
+  end
+
+  def test_el_importe_de_rectificacion_tambien_rechaza_float
+    assert_raises(ArgumentError) do
+      ImporteRectificacion.new(base: 100.0, cuota: BigDecimal('21.00'))
+    end
   end
 
   def test_una_operacion_exenta_no_admite_cuota_repercutida

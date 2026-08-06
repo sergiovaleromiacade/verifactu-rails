@@ -44,8 +44,33 @@ Fuera de alcance: Facturae/B2G, TicketBAI/Batuz, TPV.
 | `VerifactuRails::Certificado` | Carga de PKCS12, caducidad, detección de sello |
 | `VerifactuRails::Transporte` | Cliente HTTP con TLS mutuo contra el endpoint correcto |
 
-Pendiente: facturas rectificativas, QR de cotejo, capa Rails (modelo append-only,
-job con lock por NIF+serie).
+Pendiente: QR de cotejo, capa Rails (modelo append-only, job con lock por
+NIF+serie).
+
+### Rectificativas
+
+`R1`–`R5` exigen `tipo_rectificativa:` y `facturas_rectificadas:`; `F3` exige
+`facturas_sustituidas:`. La diferencia entre los dos tipos importa:
+
+- **`'S'` sustitutiva** — la factura reexpresa el importe corregido completo, así
+  que hay que declarar el original en `importe_rectificacion:`.
+- **`'I'` incremental** — los importes de la propia factura *ya son* la
+  diferencia, y `importe_rectificacion:` se rechaza.
+
+```ruby
+RegistroAlta.new(
+  ..., tipo_factura: 'R1', tipo_rectificativa: 'S',
+  facturas_rectificadas: [IdFactura.new(id_emisor: 'B12345678',
+                                        num_serie: 'FA/2026/0001',
+                                        fecha_expedicion: Date.new(2026, 8, 1))],
+  importe_rectificacion: ImporteRectificacion.new(base: BigDecimal('100.00'),
+                                                  cuota: BigDecimal('21.00'))
+)
+```
+
+El XSD deja casi todos estos campos opcionales, así que estas reglas las impone la
+gema, no el esquema: sin ellas se puede montar un `R1` sintácticamente válido que
+la AEAT rechaza con un error mucho menos claro.
 
 ## Uso
 
@@ -105,7 +130,7 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 bundle exec rake test
 ```
 
-69 tests, ~1170 aserciones. Incluye verificación cruzada de la huella contra
+81 tests, ~1200 aserciones. Incluye verificación cruzada de la huella contra
 `josemmo/Verifactu-PHP` y `mybooking-es/verifactu-rb`, y validación del XML
 generado contra los XSD oficiales de la AEAT, versionados en
 [lib/verifactu_rails/schemas](lib/verifactu_rails/schemas/PROCEDENCIA.md).

@@ -42,6 +42,46 @@ module VerifactuRails
     end
   end
 
+  # Identificación de una factura ajena a la que este registro se refiere:
+  # rectificada o sustituida (sf:IDFacturaARType). Son los mismos tres campos que
+  # identifican cualquier factura, sin la huella.
+  class IdFactura
+    attr_reader :id_emisor, :num_serie, :fecha_expedicion
+
+    def initialize(id_emisor:, num_serie:, fecha_expedicion:)
+      @id_emisor = Formato.nif(id_emisor, 'IDEmisorFactura')
+      @num_serie = Formato.limitar(num_serie, 'NumSerieFactura', 60)
+      @fecha_expedicion = Formato.fecha(fecha_expedicion)
+    end
+
+    def a_pares
+      { 'IDEmisorFactura' => id_emisor, 'NumSerieFactura' => num_serie,
+        'FechaExpedicionFactura' => fecha_expedicion }
+    end
+  end
+
+  # Base y cuota de lo que se sustituye (sf:DesgloseRectificacionType).
+  #
+  # Solo tiene sentido en rectificativas POR SUSTITUCIÓN: la factura reexpresa el
+  # importe corregido completo, así que hay que declarar cuál era el original. En
+  # las incrementales los importes de la propia factura YA son la diferencia, y no
+  # hay nada que sustituir.
+  class ImporteRectificacion
+    attr_reader :base, :cuota, :cuota_recargo
+
+    def initialize(base:, cuota:, cuota_recargo: nil)
+      @base = Importe.formatear(base)
+      @cuota = Importe.formatear(cuota)
+      @cuota_recargo = cuota_recargo && Importe.formatear(cuota_recargo)
+    end
+
+    def a_pares
+      pares = { 'BaseRectificada' => base, 'CuotaRectificada' => cuota }
+      pares['CuotaRecargoRectificado'] = cuota_recargo if cuota_recargo
+      pares
+    end
+  end
+
   # Un destinatario de la factura (sf:PersonaFisicaJuridicaType).
   # El NIF español y la identificación extranjera son excluyentes (<choice>).
   class Destinatario
@@ -80,16 +120,22 @@ module VerifactuRails
   # recibe. Aquí eso no puede pasar por construcción.
   class RegistroAlta
     TIPOS_FACTURA = %w[F1 F2 F3 R1 R2 R3 R4 R5].freeze
+    TIPOS_RECTIFICATIVA = %w[S I].freeze # S = sustitutiva, I = incremental
+    MAXIMO_REFERENCIADAS = 1000          # maxOccurs del esquema
 
     attr_reader :id_emisor, :num_serie, :fecha_expedicion, :nombre_razon_emisor,
                 :tipo_factura, :descripcion_operacion, :desglose, :cuota_total,
                 :importe_total, :sistema_informatico, :fecha_hora_gen,
-                :destinatarios, :fecha_operacion
+                :destinatarios, :fecha_operacion, :tipo_rectificativa,
+                :facturas_rectificadas, :facturas_sustituidas,
+                :importe_rectificacion
 
     def initialize(id_emisor:, num_serie:, fecha_expedicion:, nombre_razon_emisor:,
                    tipo_factura:, descripcion_operacion:, desglose:,
                    cuota_total:, importe_total:, sistema_informatico:,
-                   fecha_hora_gen:, destinatarios: [], fecha_operacion: nil)
+                   fecha_hora_gen:, destinatarios: [], fecha_operacion: nil,
+                   tipo_rectificativa: nil, facturas_rectificadas: [],
+                   facturas_sustituidas: [], importe_rectificacion: nil)
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFactura')
       @num_serie = Formato.limitar(num_serie, 'NumSerieFactura', 60)
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
@@ -103,16 +149,24 @@ module VerifactuRails
       @fecha_hora_gen = Formato.marca_temporal(fecha_hora_gen)
       @destinatarios = Array(destinatarios)
       @fecha_operacion = fecha_operacion && Formato.fecha(fecha_operacion)
+      @tipo_rectificativa = tipo_rectificativa &&
+                            Formato.enumerado(tipo_rectificativa, 'TipoRectificativa', TIPOS_RECTIFICATIVA)
+      @facturas_rectificadas = Array(facturas_rectificadas)
+      @facturas_sustituidas = Array(facturas_sustituidas)
+      @importe_rectificacion = importe_rectificacion
 
       unless @sistema_informatico.is_a?(SistemaInformatico)
         raise ArgumentError, 'sistema_informatico debe ser VerifactuRails::SistemaInformatico'
       end
-      if @destinatarios.size > 1000
-        raise ArgumentError, 'Como mucho 1000 destinatarios por registro'
+      if @destinatarios.size > MAXIMO_REFERENCIADAS
+        raise ArgumentError, "Como mucho #{MAXIMO_REFERENCIADAS} destinatarios por registro"
       end
 
-      avisar_rectificativa!
+      validar_rectificativa!
+      validar_sustitutiva!
     end
+
+    def rectificativa? = tipo_factura.start_with?('R')
 
     # Huella de este registro. `anterior` es nil solo en el primer registro de la
     # cadena del NIF+serie.
@@ -141,6 +195,16 @@ module VerifactuRails
         end
         xml['sf'].NombreRazonEmisor nombre_razon_emisor
         xml['sf'].TipoFactura tipo_factura
+        xml['sf'].TipoRectificativa tipo_rectificativa if tipo_rectificativa
+        construir_referenciadas(xml, 'FacturasRectificadas', 'IDFacturaRectificada',
+                                facturas_rectificadas)
+        construir_referenciadas(xml, 'FacturasSustituidas', 'IDFacturaSustituida',
+                                facturas_sustituidas)
+        if importe_rectificacion
+          xml['sf'].ImporteRectificacion do
+            importe_rectificacion.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }
+          end
+        end
         xml['sf'].FechaOperacion fecha_operacion if fecha_operacion
         xml['sf'].DescripcionOperacion descripcion_operacion
         construir_destinatarios(xml)
@@ -202,15 +266,84 @@ module VerifactuRails
       end
     end
 
-    # Las rectificativas exigen TipoRectificativa y FacturasRectificadas, que
-    # todavía no emitimos. Fallar aquí es preferible a mandar un R1 incompleto y
-    # que lo rechace la AEAT con un error mucho menos claro.
-    def avisar_rectificativa!
-      return unless tipo_factura.start_with?('R')
+    def construir_referenciadas(xml, envoltorio, elemento, facturas)
+      return if facturas.empty?
 
-      raise NotImplementedError,
-            "TipoFactura #{tipo_factura} (rectificativa) todavía no está " \
-            'implementado: falta emitir TipoRectificativa y FacturasRectificadas.'
+      xml['sf'].send(envoltorio) do
+        facturas.each do |factura|
+          xml['sf'].send(elemento) do
+            factura.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }
+          end
+        end
+      end
+    end
+
+    # Coherencia de las rectificativas. El XSD deja casi todo opcional, así que
+    # estas reglas no las impone el esquema: sin ellas se puede montar un R1
+    # sintácticamente válido que la AEAT rechaza con un error mucho menos claro.
+    def validar_rectificativa!
+      if rectificativa?
+        if tipo_rectificativa.nil?
+          raise ArgumentError,
+                "TipoFactura #{tipo_factura} es rectificativa y exige " \
+                "tipo_rectificativa: 'S' (sustitutiva) o 'I' (incremental)"
+        end
+        if facturas_rectificadas.empty?
+          raise ArgumentError,
+                "TipoFactura #{tipo_factura} exige facturas_rectificadas: " \
+                'indica qué factura se rectifica'
+        end
+      else
+        unless tipo_rectificativa.nil? && facturas_rectificadas.empty?
+          raise ArgumentError,
+                "TipoFactura #{tipo_factura} no es rectificativa: no admite " \
+                'tipo_rectificativa ni facturas_rectificadas (usa R1-R5)'
+        end
+      end
+
+      validar_importe_rectificacion!
+      validar_limite(facturas_rectificadas, 'facturas_rectificadas')
+    end
+
+    # Una sustitutiva reexpresa el importe corregido completo, así que hay que
+    # declarar cuál era el original. Una incremental ya ES la diferencia.
+    def validar_importe_rectificacion!
+      case tipo_rectificativa
+      when 'S'
+        if importe_rectificacion.nil?
+          raise ArgumentError,
+                'Una rectificativa por sustitución exige importe_rectificacion ' \
+                'con la base y la cuota que se sustituyen'
+        end
+      when 'I'
+        unless importe_rectificacion.nil?
+          raise ArgumentError,
+                'Una rectificativa incremental no lleva importe_rectificacion: ' \
+                'sus propios importes ya son la diferencia'
+        end
+      end
+    end
+
+    # F3 es la factura emitida en sustitución de simplificadas.
+    def validar_sustitutiva!
+      if tipo_factura == 'F3' && facturas_sustituidas.empty?
+        raise ArgumentError,
+              'TipoFactura F3 (sustitución de simplificadas) exige facturas_sustituidas'
+      end
+      if tipo_factura != 'F3' && !facturas_sustituidas.empty?
+        raise ArgumentError,
+              "TipoFactura #{tipo_factura} no admite facturas_sustituidas (usa F3)"
+      end
+
+      validar_limite(facturas_sustituidas, 'facturas_sustituidas')
+    end
+
+    def validar_limite(facturas, campo)
+      return if facturas.size <= MAXIMO_REFERENCIADAS
+
+      raise ArgumentError,
+            "#{campo} admite como mucho #{MAXIMO_REFERENCIADAS} facturas " \
+            "(recibidas #{facturas.size})"
     end
   end
 
