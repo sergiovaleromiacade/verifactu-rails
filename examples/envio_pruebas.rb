@@ -87,10 +87,26 @@ registro = RegistroAlta.new(
   destinatarios: destinatarios
 )
 
-# nil = primer registro de la cadena. En un sistema real, el anterior sale de la
-# base de datos bajo un lock por NIF+serie.
+# Encadenamiento. `nil` marca PrimerRegistro="S", que solo vale para el primero
+# de ese SIF+NIF: si ya hay registros, la AEAT lo acepta pero con error admisible
+# y obligación de subsanar (Validaciones ap. 4.3.1). A partir del segundo envío
+# hay que pasar los datos del anterior.
+#
+# En un sistema real esto sale de la base de datos bajo un lock por NIF+serie;
+# aquí va por entorno para poder encadenar dos ejecuciones a mano.
+anterior =
+  if ENV['VF_ANTERIOR_HUELLA']
+    RegistroAnterior.new(
+      id_emisor: ENV['VF_ANTERIOR_NIF'] || nif,
+      num_serie: env!('VF_ANTERIOR_SERIE'),
+      fecha_expedicion: env!('VF_ANTERIOR_FECHA'),
+      huella: ENV['VF_ANTERIOR_HUELLA']
+    )
+  end
+puts anterior ? "Encadenando tras #{anterior.num_serie}" : 'Primer registro de la cadena'
+
 xml = Envio.new(nif_obligado: nif, nombre_obligado: nombre,
-                entradas: [[registro, nil]]).to_xml
+                entradas: [[registro, anterior]]).to_xml
 
 puts "\nHuella del registro: #{registro.huella(anterior: nil)}"
 puts "Cadena previa al hash (esto es lo que hay que comparar ante un rechazo):"
@@ -120,6 +136,15 @@ begin
     puts "\nOJO: quedaron anotados pero OBLIGAN A SUBSANAR (no los reenvíes tal cual;"
     puts 'manda un alta con subsanacion: "S"):'
     respuesta.a_subsanar.each { |l| puts "  #{l}" }
+  end
+
+  # Para encadenar el siguiente envío sin copiar datos a mano.
+  if respuesta.lineas.first&.anotado?
+    puts "\nPara encadenar el siguiente envío:"
+    puts "  VF_ANTERIOR_SERIE='#{registro.num_serie}' \\"
+    puts "  VF_ANTERIOR_FECHA='#{registro.fecha_expedicion}' \\"
+    puts "  VF_ANTERIOR_HUELLA=#{registro.huella(anterior: anterior)} \\"
+    puts '    VF_P12=... VF_PASS=... ruby -Ilib examples/envio_pruebas.rb'
   end
 rescue VerifactuRails::RespuestaError => e
   puts "\nNo se pudo interpretar la respuesta: #{e.message}"

@@ -3,8 +3,10 @@
 Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rails.
 
 > **Estado: en desarrollo, sin release público.** La capa Rails todavía no existe.
-> El transporte sí está probado contra el entorno de pruebas de la AEAT (mTLS y
-> respuestas reales); el envío completo, todavía no. La API puede cambiar sin aviso.
+> Un alta simple SÍ ha sido aceptada por el entorno de pruebas de la AEAT, con la
+> huella validada por su propio recálculo. Siguen sin probarse contra el servicio
+> real el encadenamiento, las anulaciones, las rectificativas y los lotes. La API
+> puede cambiar sin aviso.
 
 ## Qué es y qué no es
 
@@ -147,7 +149,7 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 bundle exec rake test
 ```
 
-143 tests, ~1540 aserciones. Incluye verificación cruzada de la huella contra
+146 tests, ~1540 aserciones. Incluye verificación cruzada de la huella contra
 `josemmo/Verifactu-PHP` y `mybooking-es/verifactu-rb`, y validación del XML
 generado contra los XSD oficiales de la AEAT, versionados en
 [lib/verifactu_rails/schemas](lib/verifactu_rails/schemas/PROCEDENCIA.md).

@@ -226,6 +226,24 @@ Listado completo en `https://prewww2.aeat.es/static_files/common/internet/dep/ap
 
 ## Contrastado contra preproducción (06-08-2026)
 
+**Primer registro aceptado.** `EstadoEnvio=Correcto`, `EstadoRegistro=Correcto`,
+CSV emitido. Lo que eso demuestra, por orden de importancia:
+
+- **La huella coincide con la que recalcula la AEAT.** Un desajuste habría dado
+  `AceptadoConErrores` con obligación de subsanar (ap. 4.3.1), y salió `Correcto`
+  limpio. Es la validación que ningún test propio puede dar: confirma la cadena
+  de serialización, el formateo de importes y la marca temporal con offset,
+  todo contra el recálculo real del servicio.
+- El XML pasa las validaciones de negocio, no solo el XSD.
+- El transporte completo funciona: mTLS, sobre SOAP, endpoint y lectura de la
+  respuesta.
+
+Lo que **NO** demuestra, y conviene no dar por bueno: fue un alta F1 con una sola
+línea de desglose y `PrimerRegistro`. Siguen sin probarse contra el servicio real
+el encadenamiento, las anulaciones, las rectificativas, la subsanación y los lotes
+de más de un registro. Tampoco se ejercitaron las validaciones de rechazo: una
+factura válida no recorre esos caminos.
+
 Primeros envíos reales a `prewww1.aeat.es` con un certificado de representante de
 la FNMT. Lo que confirman:
 
