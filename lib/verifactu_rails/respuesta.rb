@@ -98,8 +98,12 @@ module VerifactuRails
       (desde || Time.now) + tiempo_espera
     end
 
+    # El recuento es de LOS REGISTROS DE ESTE ENVÍO, no de la cadena: la AEAT
+    # responde sobre lo que le mandaste en esta petición. Una cadena de tres
+    # eslabones puede haberse construido en tres envíos de un registro cada uno.
     def to_s
-      "#{estado_envio} (#{lineas.size} registros: #{anotadas.size} anotados, " \
+      registros = lineas.size == 1 ? '1 registro en este envío' : "#{lineas.size} registros en este envío"
+      "#{estado_envio} (#{registros}: #{anotadas.size} anotados, " \
         "#{a_subsanar.size} a subsanar, #{rechazadas.size} rechazados)"
     end
 
