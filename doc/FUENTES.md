@@ -140,6 +140,90 @@ un entorno concreto, pero deja de ser el arreglo por defecto ante un fallo de
 verificación. Ahí lo probable es un almacén de confianza anticuado o un proxy
 corporativo interceptando el TLS.
 
+## Diseños de registro (Excel v1.0)
+
+`DsRegistroVeriFactu.xlsx`, 11 hojas. Las relevantes en alcance:
+
+### Listas de códigos (hoja "6)Listas")
+
+Son la fuente autorizada de los enumerados que las Validaciones citan sin
+desarrollar:
+
+| Lista | Campo | Valores |
+|---|---|---|
+| L1 | `Impuesto` | 01 IVA, 02 IPSI, 03 IGIC, 05 Otros |
+| L2 | `TipoFactura` | F1, F2, F3, R1–R5 |
+| L3 | `TipoRectificativa` | S sustitución, I diferencias |
+| L6 | `EmitidaPorTerceroODestinatario` | D, T |
+| L7 | `IDType` | 02 NIF-IVA, 03 pasaporte, 04 doc. oficial, 05 cert. residencia, 06 otro, 07 no censado |
+| L8A | `ClaveRegimen` con IVA | 01–11, 14, 15, 17, 18, 19, 20 |
+| L8B | `ClaveRegimen` con IGIC | 01–11, 14, 15, 17, 18, 19 (+ 20 según Validaciones) |
+| L9 | `CalificacionOperacion` | S1, S2, N1, N2 |
+| **L10** | `OperacionExenta` | **E1–E6 únicamente** |
+| L12 | `TipoHuella` | 01 SHA-256 |
+| L15 | `IDVersion` | 1.0 |
+| L16 | `GeneradoPor` | E expedidor, D destinatario, T tercero |
+| L17 | `RechazoPrevio` | N, S, X |
+
+L10 confirma que **E7 y E8 no son valores generales**: solo se admiten con
+IGIC. Nuestra constante `Detalle::EXENCIONES` los incluye siempre y es por tanto
+demasiado permisiva.
+
+L1E–L4E son del registro de eventos: fuera de alcance.
+
+Discrepancia de versiones: `ClaveRegimen = 21` no aparece en L8A ni en L8B, pero
+sí en el XSD y en el ap. 15.6.11 de las Validaciones (que le dedica un apartado
+para IGIC). El Excel es v1.0 y las Validaciones v1.2.2, así que se sigue a las
+más recientes.
+
+### Cuadros de operativa (hojas "A" y "B") — afectan al ALCANCE
+
+Esto no es una tabla de formatos: define **las seis operativas de alta y las
+cuatro de anulación**, y cada una se distingue por una combinación de campos que
+esta gema **todavía no emite**.
+
+Alta, según `Subsanacion` + `RechazoPrevio`:
+
+| Operativa | `Subsanacion` | `RechazoPrevio` |
+|---|---|---|
+| Alta inicial ("normal") | ausente o N | ausente o N |
+| Alta de subsanación | S | ausente o N |
+| Alta por rechazo de subsanación | S | S |
+| Alta por rechazo / sin registro previo | S | X |
+
+Anulación, según `SinRegistroPrevio` + `RechazoPrevio`: las cuatro combinaciones
+de ambos campos.
+
+**Consecuencia:** hoy solo sabemos construir la primera fila de cada cuadro. Y eso
+importa más de lo que parece, porque una huella que no cuadra es *error admisible*
+y **obliga a subsanar** (Validaciones ap. 4.3.1): sin `Subsanacion`, quien reciba
+un "AceptadoConErrores" no tiene forma de corregirlo con esta gema. El mecanismo
+de corrección entero depende de estos campos.
+
+`RechazoPrevio = X` es además el camino de migración desde NO VERI\*FACTU:
+registros que existen en el SIF del obligado pero nunca se remitieron.
+
+## Servicios web (Descripción SWeb v1.0.3)
+
+- **Ap. 6.8** — ceros a la izquierda prohibidos en numéricos (`01` mal, `1` bien),
+  pero tras el separador decimal son irrelevantes: *"12345 es lo mismo que 12345.0
+  y que 12345.00"*. Nuestro formato de 2 decimales es válido, y también lo es el
+  `241.4` del ejemplo oficial.
+- **Ap. 6.9** — solo hay que escapar `&` como `&amp;` y `<` como `&lt;`.
+  Respalda la asimetría huella-cruda / XML-escapado.
+- **Respuesta**: `EstadoEnvio` (Correcto / ParcialmenteCorrecto / Incorrecto),
+  `EstadoRegistro` (Correcto / AceptadoConErrores / Incorrecto) y
+  `EstadoRegistroDuplicado` (Correcta / AceptadaConErrores / Anulada).
+- **`TiempoEsperaEnvio`**: esperar esos segundos **o** acumular hasta el límite de
+  lote, lo que ocurra primero.
+- **WSDL** de pruebas: `https://prewww2.aeat.es/static_files/common/internet/dep/aplicaciones/es/aeat/tikeV1.0/cont/ws/SistemaFacturacion.wsdl`
+
+### Códigos de error
+
+Listado completo en `https://prewww2.aeat.es/static_files/common/internet/dep/aplicaciones/es/aeat/tikeV1.0/cont/ws/errores.properties`
+(ISO-8859-1). **247 códigos** en tres categorías: 44 rechazan el envío completo,
+193 rechazan la factura, y **10** producen aceptación con obligación de subsanar.
+
 ## Ejemplos de registro
 
 `ejemploRegistro.xml` y `ejemploRegistro-firmado-epes-xades4j.xml` (fuera del
