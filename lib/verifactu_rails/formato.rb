@@ -111,6 +111,23 @@ module VerifactuRails
       cadena
     end
 
+    # Campos sf:SiNoType. Acepta el booleano de Ruby y también la letra de la
+    # AEAT, porque quien lee la documentación escribe 'S'/'N' de forma natural.
+    #
+    # Lo que NO puede pasar es tratarlo como valor de verdad a secas: 'N' es
+    # truthy en Ruby, así que `multi_ot ? 'S' : 'N'` emitía 'S' cuando el usuario
+    # había pedido 'N', invirtiendo la declaración en silencio.
+    def si_no(valor, campo)
+      case valor
+      when nil       then nil
+      when true, 'S' then 'S'
+      when false, 'N' then 'N'
+      else
+        raise ArgumentError,
+              "#{campo} debe ser true/false o 'S'/'N' (recibido: #{valor.inspect})"
+      end
+    end
+
     def enumerado(valor, campo, admitidos)
       cadena = texto(valor, campo)
       unless admitidos.include?(cadena)

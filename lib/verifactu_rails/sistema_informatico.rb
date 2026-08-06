@@ -34,10 +34,12 @@ module VerifactuRails
       @id_sistema = Formato.limitar(id_sistema, 'IdSistemaInformatico', 2)
       @version = Formato.limitar(version, 'Version', 50)
       @numero_instalacion = Formato.limitar(numero_instalacion, 'NumeroInstalacion', 100)
-      @multi_ot = multi_ot
-      @multiples_ot = multiples_ot
+      # Por Formato.si_no y no por valor de verdad: 'N' es truthy en Ruby y se
+      # emitía como 'S', invirtiendo lo que el usuario había declarado.
+      @multi_ot = Formato.si_no(multi_ot, 'TipoUsoPosibleMultiOT') == 'S'
+      @multiples_ot = Formato.si_no(multiples_ot, 'IndicadorMultiplesOT') == 'S'
 
-      if multiples_ot && !multi_ot
+      if @multiples_ot && !@multi_ot
         raise ArgumentError,
               'IndicadorMultiplesOT no puede ser cierto si TipoUsoPosibleMultiOT ' \
               'es falso: no puedes estar usándolo para varios obligados si el ' \

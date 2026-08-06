@@ -123,6 +123,14 @@ module VerifactuRails
     TIPOS_RECTIFICATIVA = %w[S I].freeze # S = sustitutiva, I = incremental
     MAXIMO_REFERENCIADAS = 1000          # maxOccurs del esquema
 
+    # RechazoPrevio en un ALTA admite tres valores (la anulación solo dos):
+    #   N  no hubo rechazo previo de la AEAT
+    #   S  lo hubo, y el registro sí existe en la AEAT
+    #   X  el registro NO existe en la AEAT, se remitiera o no antes. Es la vía
+    #      para subsanar algo que está en el SIF del obligado pero nunca llegó,
+    #      típicamente al migrar desde NO VERI*FACTU.
+    RECHAZOS_PREVIOS = %w[N S X].freeze
+
     # Destinatarios: obligatorio en unos tipos, prohibido en otros
     # (Validaciones v1.2.2, ap. 3.1.3.13). F2 y R5 son las simplificadas, donde
     # por definición no se identifica al destinatario.
@@ -137,14 +145,19 @@ module VerifactuRails
                 :importe_total, :sistema_informatico, :fecha_hora_gen,
                 :destinatarios, :fecha_operacion, :tipo_rectificativa,
                 :facturas_rectificadas, :facturas_sustituidas,
-                :importe_rectificacion
+                :importe_rectificacion, :subsanacion, :rechazo_previo
 
+    # @param subsanacion ['S', 'N', true, false, nil] marca el alta como
+    #   subsanación de un registro ya generado. Es el ÚNICO mecanismo para
+    #   corregir un registro que la AEAT aceptó con errores.
+    # @param rechazo_previo ['N', 'S', 'X', nil] ver RECHAZOS_PREVIOS.
     def initialize(id_emisor:, num_serie:, fecha_expedicion:, nombre_razon_emisor:,
                    tipo_factura:, descripcion_operacion:, desglose:,
                    cuota_total:, importe_total:, sistema_informatico:,
                    fecha_hora_gen:, destinatarios: [], fecha_operacion: nil,
                    tipo_rectificativa: nil, facturas_rectificadas: [],
-                   facturas_sustituidas: [], importe_rectificacion: nil)
+                   facturas_sustituidas: [], importe_rectificacion: nil,
+                   subsanacion: nil, rechazo_previo: nil)
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFactura')
       @num_serie = Formato.num_serie(num_serie)
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
@@ -163,6 +176,9 @@ module VerifactuRails
       @facturas_rectificadas = Array(facturas_rectificadas)
       @facturas_sustituidas = Array(facturas_sustituidas)
       @importe_rectificacion = importe_rectificacion
+      @subsanacion = Formato.si_no(subsanacion, 'Subsanacion')
+      @rechazo_previo = rechazo_previo &&
+                        Formato.enumerado(rechazo_previo, 'RechazoPrevio', RECHAZOS_PREVIOS)
 
       unless @sistema_informatico.is_a?(SistemaInformatico)
         raise ArgumentError, 'sistema_informatico debe ser VerifactuRails::SistemaInformatico'
@@ -172,6 +188,7 @@ module VerifactuRails
       end
 
       validar_fecha_expedicion!(fecha_expedicion)
+      validar_subsanacion!
       validar_destinatarios!
       validar_rectificativa!
       validar_sustitutiva!
@@ -205,6 +222,8 @@ module VerifactuRails
           xml['sf'].FechaExpedicionFactura fecha_expedicion
         end
         xml['sf'].NombreRazonEmisor nombre_razon_emisor
+        xml['sf'].Subsanacion subsanacion if subsanacion
+        xml['sf'].RechazoPrevio rechazo_previo if rechazo_previo
         xml['sf'].TipoFactura tipo_factura
         xml['sf'].TipoRectificativa tipo_rectificativa if tipo_rectificativa
         construir_referenciadas(xml, 'FacturasRectificadas', 'IDFacturaRectificada',
@@ -306,6 +325,18 @@ module VerifactuRails
             "FechaExpedicionFactura no puede ser futura: #{@fecha_expedicion}"
     end
 
+    # Ap. 3.1.3.2. Un RechazoPrevio distinto de "N" solo tiene sentido dentro de
+    # una subsanación: las combinaciones (Subsanacion=N, RechazoPrevio=S) y
+    # (Subsanacion=N, RechazoPrevio=X) no se admiten (lista L17).
+    def validar_subsanacion!
+      return if rechazo_previo.nil? || rechazo_previo == 'N'
+      return if subsanacion == 'S'
+
+      raise ArgumentError,
+            "RechazoPrevio=#{rechazo_previo} exige subsanacion: 'S'. " \
+            'Un rechazo previo solo se declara al subsanar el registro rechazado.'
+    end
+
     def validar_destinatarios!
       if TIPOS_CON_DESTINATARIO.include?(tipo_factura) && destinatarios.empty?
         raise ArgumentError,
@@ -393,16 +424,29 @@ module VerifactuRails
 
   # Registro de facturación de ANULACIÓN.
   class RegistroAnulacion
-    attr_reader :id_emisor, :num_serie, :fecha_expedicion,
-                :sistema_informatico, :fecha_hora_gen
+    # A diferencia del alta, aquí RechazoPrevio NO admite "X": ese valor existe
+    # para subsanar altas que no constan en la AEAT, y una anulación de algo que
+    # no consta se expresa con SinRegistroPrevio.
+    RECHAZOS_PREVIOS = %w[N S].freeze
 
+    attr_reader :id_emisor, :num_serie, :fecha_expedicion,
+                :sistema_informatico, :fecha_hora_gen,
+                :sin_registro_previo, :rechazo_previo
+
+    # @param sin_registro_previo ['S', 'N', true, false, nil] la factura que se
+    #   anula no consta en la AEAT (p. ej. se facturó en NO VERI*FACTU).
+    # @param rechazo_previo ['S', 'N', nil] la AEAT rechazó una anulación previa.
     def initialize(id_emisor:, num_serie:, fecha_expedicion:,
-                   sistema_informatico:, fecha_hora_gen:)
+                   sistema_informatico:, fecha_hora_gen:,
+                   sin_registro_previo: nil, rechazo_previo: nil)
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFacturaAnulada')
       @num_serie = Formato.num_serie(num_serie, 'NumSerieFacturaAnulada')
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
       @sistema_informatico = sistema_informatico
       @fecha_hora_gen = Formato.marca_temporal(fecha_hora_gen)
+      @sin_registro_previo = Formato.si_no(sin_registro_previo, 'SinRegistroPrevio')
+      @rechazo_previo = rechazo_previo &&
+                        Formato.enumerado(rechazo_previo, 'RechazoPrevio', RECHAZOS_PREVIOS)
 
       unless @sistema_informatico.is_a?(SistemaInformatico)
         raise ArgumentError, 'sistema_informatico debe ser VerifactuRails::SistemaInformatico'
@@ -430,6 +474,8 @@ module VerifactuRails
           xml['sf'].NumSerieFacturaAnulada num_serie
           xml['sf'].FechaExpedicionFacturaAnulada fecha_expedicion
         end
+        xml['sf'].SinRegistroPrevio sin_registro_previo if sin_registro_previo
+        xml['sf'].RechazoPrevio rechazo_previo if rechazo_previo
         xml['sf'].Encadenamiento do
           xml['sf'].RegistroAnterior do
             anterior.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }

@@ -446,6 +446,145 @@ class XmlTest < Minitest::Test
                                 discrepancias.join("\n")
   end
 
+  # --- subsanación: las operativas del cuadro A del Excel de diseños ---------
+
+  def anulacion(**extra)
+    RegistroAnulacion.new(id_emisor: 'B12345678', num_serie: 'FA/2026/0001',
+                          fecha_expedicion: Date.new(2026, 8, 6),
+                          sistema_informatico: sistema, fecha_hora_gen: MOMENTO, **extra)
+  end
+
+  # Las cuatro combinaciones admisibles de Subsanacion + RechazoPrevio, tal como
+  # las define el cuadro "A)Cuadro Operativa Alta". Sin estos campos la gema solo
+  # sabe emitir la primera fila, y quien reciba un "AceptadoConErrores" de la
+  # AEAT no tiene forma de corregirlo.
+  OPERATIVAS_ALTA = [
+    ['alta inicial',                        nil, nil],
+    ['alta inicial explícita',              'N', 'N'],
+    ['alta de subsanación',                 'S', nil],
+    ['alta de subsanación con N explícita', 'S', 'N'],
+    ['alta por rechazo de subsanación',     'S', 'S'],
+    ['alta por rechazo / sin registro previo', 'S', 'X']
+  ].freeze
+
+  def test_las_operativas_de_alta_validan_contra_el_xsd
+    OPERATIVAS_ALTA.each do |nombre, subs, rechazo|
+      registro = alta(subsanacion: subs, rechazo_previo: rechazo)
+      assert_empty Esquema.errores(envio([[registro, nil]])), "operativa: #{nombre}"
+    end
+  end
+
+  def test_la_subsanacion_va_en_su_posicion_de_la_sequence
+    doc = Nokogiri::XML(envio([[alta(subsanacion: 'S', rechazo_previo: 'X'), nil]]))
+    nombres = doc.at_xpath('//sf:RegistroAlta', 'sf' => SF).element_children.map(&:name)
+    interes = %w[NombreRazonEmisor Subsanacion RechazoPrevio TipoFactura]
+
+    assert_equal interes, nombres.select { |n| interes.include?(n) }
+  end
+
+  # Ap. 3.1.3.2 y lista L17: (Subsanacion=N, RechazoPrevio=S) y
+  # (Subsanacion=N, RechazoPrevio=X) no se admiten.
+  def test_un_rechazo_previo_exige_estar_subsanando
+    %w[S X].each do |rechazo|
+      [nil, 'N'].each do |subs|
+        error = assert_raises(ArgumentError, "RechazoPrevio=#{rechazo} con Subsanacion=#{subs.inspect}") do
+          alta(subsanacion: subs, rechazo_previo: rechazo)
+        end
+        assert_match(/exige subsanacion/, error.message)
+      end
+    end
+  end
+
+  def test_una_alta_normal_no_emite_los_campos_de_subsanacion
+    xml = envio([[alta, nil]])
+
+    refute_includes xml, 'Subsanacion'
+    refute_includes xml, 'RechazoPrevio'
+  end
+
+  def test_las_operativas_de_anulacion_validan_contra_el_xsd
+    [[nil, nil], ['N', 'N'], ['S', nil], [nil, 'S'], ['S', 'S']].each do |sin_previo, rechazo|
+      baja = anulacion(sin_registro_previo: sin_previo, rechazo_previo: rechazo)
+      assert_empty Esquema.errores(envio([[baja, anterior]])),
+                   "SinRegistroPrevio=#{sin_previo.inspect} RechazoPrevio=#{rechazo.inspect}"
+    end
+  end
+
+  # En la anulación no existe la operativa "X": lo que en el alta se expresa con
+  # RechazoPrevio=X, aquí se expresa con SinRegistroPrevio.
+  def test_la_anulacion_no_admite_rechazo_previo_x
+    error = assert_raises(ArgumentError) { anulacion(rechazo_previo: 'X') }
+    assert_match(/RechazoPrevio inválido/, error.message)
+  end
+
+  # Reproduce la estructura de ejemploRegistro.xml, el ejemplo publicado por la
+  # AEAT: una R3 incremental con Subsanacion, RechazoPrevio, FechaOperacion y
+  # encadenamiento. Contraste externo del orden de la <sequence>, que ni el XSD
+  # compilado detecta si un opcional se coloca donde no toca pero el resto encaja.
+  ORDEN_EJEMPLO_OFICIAL = %w[
+    IDVersion IDFactura NombreRazonEmisor Subsanacion RechazoPrevio TipoFactura
+    TipoRectificativa FacturasRectificadas FechaOperacion DescripcionOperacion
+    Destinatarios Desglose CuotaTotal ImporteTotal Encadenamiento
+    SistemaInformatico FechaHoraHusoGenRegistro TipoHuella Huella
+  ].freeze
+
+  def test_reproduce_la_estructura_del_ejemplo_oficial_de_la_aeat
+    registro = alta(
+      id_emisor: '89890001K', num_serie: '12345678-G66',
+      fecha_expedicion: '03-02-2025', nombre_razon_emisor: 'certificado uno telematicas',
+      subsanacion: 'N', rechazo_previo: 'N',
+      tipo_factura: 'R3', tipo_rectificativa: 'I',
+      facturas_rectificadas: [IdFactura.new(id_emisor: '89890001K',
+                                            num_serie: '12345600-G66',
+                                            fecha_expedicion: '01-04-2024')],
+      fecha_operacion: '03-02-2025', descripcion_operacion: 'fecha entrega',
+      destinatarios: [Destinatario.new(nombre_razon: 'certificado dos telematicas',
+                                       nif: '89890002E')]
+    )
+    previo = RegistroAnterior.new(
+      id_emisor: '89890001K', num_serie: '12345677-G33',
+      fecha_expedicion: '15-04-2024',
+      huella: 'C9AF4AF1EF5EBBA700350DE3EEF12C2D355C56AC56F13DB2A25E0031BD2B7ED5'
+    )
+    xml = Envio.new(nif_obligado: '89890001K', nombre_obligado: 'certificado uno telematicas',
+                    entradas: [[registro, previo]]).to_xml
+
+    assert_empty Esquema.errores(xml)
+    assert_equal ORDEN_EJEMPLO_OFICIAL,
+                 Nokogiri::XML(xml).at_xpath('//sf:RegistroAlta', 'sf' => SF)
+                                   .element_children.map(&:name)
+  end
+
+  # --- los campos S/N no pueden mentir ---------------------------------------
+
+  # 'N' es truthy en Ruby: con `valor ? 'S' : 'N'` se emitía 'S' cuando el
+  # usuario pedía 'N', invirtiendo la declaración sin avisar.
+  def test_los_campos_si_no_aceptan_la_letra_de_la_aeat_sin_invertirse
+    doc = Nokogiri::XML(envio([[alta(subsanacion: 'N'), nil]]))
+    assert_equal 'N', doc.at_xpath('//sf:Subsanacion', 'sf' => SF).text
+
+    s = SistemaInformatico.new(nombre_razon: 'Paraia SL', nif: 'B12345678',
+                               nombre_sistema: 'MiFactura', id_sistema: '01',
+                               version: '0.1.0', numero_instalacion: 'INST-1',
+                               multi_ot: 'N', multiples_ot: 'N')
+    assert_equal 'N', s.a_pares['TipoUsoPosibleMultiOT']
+    assert_equal 'N', s.a_pares['IndicadorMultiplesOT']
+
+    afirmativo = SistemaInformatico.new(nombre_razon: 'Paraia SL', nif: 'B12345678',
+                                        nombre_sistema: 'MiFactura', id_sistema: '01',
+                                        version: '0.1.0', numero_instalacion: 'INST-1',
+                                        multi_ot: 'S', multiples_ot: true)
+    assert_equal 'S', afirmativo.a_pares['TipoUsoPosibleMultiOT']
+    assert_equal 'S', afirmativo.a_pares['IndicadorMultiplesOT']
+  end
+
+  def test_los_campos_si_no_rechazan_lo_que_no_sea_booleano_ni_s_ni_n
+    ['si', 'Y', 1, 'X'].each do |basura|
+      error = assert_raises(ArgumentError) { alta(subsanacion: basura) }
+      assert_match(/true\/false o 'S'\/'N'/, error.message)
+    end
+  end
+
   # --- validaciones de negocio de la AEAT (Validaciones v1.2.2) --------------
 
   # Ap. 3.1.3.13. F2 y R5 son las simplificadas: no se identifica al destinatario.
