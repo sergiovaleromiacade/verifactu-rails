@@ -3,10 +3,10 @@
 Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rails.
 
 > **Estado: en desarrollo, sin release público.** La capa Rails todavía no existe.
-> Un alta simple SÍ ha sido aceptada por el entorno de pruebas de la AEAT, con la
-> huella validada por su propio recálculo. Siguen sin probarse contra el servicio
-> real el encadenamiento, las anulaciones, las rectificativas y los lotes. La API
-> puede cambiar sin aviso.
+> Dos altas encadenadas SÍ han sido aceptadas por el entorno de pruebas de la
+> AEAT, con la huella validada por su propio recálculo. Siguen sin probarse contra
+> el servicio real las anulaciones, las rectificativas, la subsanación y los lotes
+> de más de un registro. La API puede cambiar sin aviso.
 
 ## Qué es y qué no es
 

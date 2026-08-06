@@ -238,11 +238,21 @@ CSV emitido. Lo que eso demuestra, por orden de importancia:
 - El transporte completo funciona: mTLS, sobre SOAP, endpoint y lectura de la
   respuesta.
 
-Lo que **NO** demuestra, y conviene no dar por bueno: fue un alta F1 con una sola
-línea de desglose y `PrimerRegistro`. Siguen sin probarse contra el servicio real
-el encadenamiento, las anulaciones, las rectificativas, la subsanación y los lotes
-de más de un registro. Tampoco se ejercitaron las validaciones de rechazo: una
-factura válida no recorre esos caminos.
+**Segundo registro encadenado, también aceptado.** `RegistroAnterior` con los
+cuatro campos del primero, respuesta `Correcto` y cero a subsanar. La AEAT
+reconoció el eslabón: el encadenamiento funciona de punta a punta.
+
+Detalle metodológico que conviene recordar: se pudo determinar *a posteriori* que
+el segundo registro iba encadenado sin más dato que su huella, recalculándola con
+y sin eslabón previo y viendo cuál coincidía. La huella es determinista, así que
+sirve para reconstruir qué se envió realmente cuando el registro de la aplicación
+no lo aclara.
+
+Lo que **NO** demuestra, y conviene no dar por bueno: fueron dos altas F1 con una
+línea de desglose cada una, enviadas de una en una. Siguen sin probarse contra el
+servicio real las anulaciones, las rectificativas, la subsanación y los lotes con
+más de un registro por envío. Tampoco se ejercitaron las validaciones de rechazo:
+una factura válida no recorre esos caminos.
 
 Primeros envíos reales a `prewww1.aeat.es` con un certificado de representante de
 la FNMT. Lo que confirman:
