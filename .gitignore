@@ -1,0 +1,15 @@
+/.bundle/
+/pkg/
+/tmp/
+/doc/
+Gemfile.lock
+*.gem
+
+# Nunca versionar credenciales del obligado tributario.
+*.p12
+*.pfx
+*.pem
+*.key
+
+.DS_Store
+/.ruby-lsp/
