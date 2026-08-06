@@ -142,9 +142,19 @@ class HuellaTest < Minitest::Test
     assert_raises(ArgumentError) { VerifactuRails::Huella.alta(**ALTA.merge(id_emisor: '')) }
   end
 
+  # La AEAT NO admite esta serie: NumSerieFactura se limita a ASCII 32-126, y
+  # RegistroAlta la rechaza. Aquí se usa a propósito porque Huella es una
+  # primitiva que debe poder hashear cualquier registro, incluido uno ajeno, y
+  # porque el multibyte UTF-8 es donde más fácil divergen las implementaciones:
+  # la cadena se codifica en UTF-8 antes de hashear (Especificaciones v0.1.2,
+  # ap. 3).
   def test_utf8_en_serie
     huella = VerifactuRails::Huella.alta(**ALTA.merge(num_serie: 'FACTURACIÓN/1'))
     assert_match(/\A[0-9A-F]{64}\z/, huella)
+
+    assert_raises(ArgumentError, 'RegistroAlta sí debe rechazarla') do
+      VerifactuRails::Formato.num_serie('FACTURACIÓN/1')
+    end
   end
 
   # --- Determinismo ----------------------------------------------------------

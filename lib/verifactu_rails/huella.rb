@@ -80,6 +80,16 @@ module VerifactuRails
     # texto, fecha y marca_temporal viven en Formato porque el generador de XML
     # necesita exactamente los mismos: si divergieran, la huella que calculamos
     # dejaría de corresponder al XML que enviamos.
+    #
+    # DELIBERADO: aquí se usa Formato.texto y NO Formato.num_serie, que es el que
+    # aplica las restricciones de la AEAT al NumSerieFactura (ASCII 32-126, sin
+    # " ' < > =). Este módulo es una primitiva de hash, no la capa de reglas de
+    # negocio: debe poder recalcular la huella de CUALQUIER registro, incluido uno
+    # que no generamos nosotros. Eso es justo lo que necesitas al depurar un
+    # rechazo de la AEAT o al migrar desde otro sistema.
+    #
+    # Quien construye registros nuevos pasa por RegistroAlta / RegistroAnulacion,
+    # y ahí sí se aplican todas las restricciones.
 
     def texto(valor, campo) = Formato.texto(valor, campo)
 

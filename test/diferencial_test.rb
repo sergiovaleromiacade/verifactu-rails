@@ -33,6 +33,11 @@ module JosemmoRef
 end
 
 class DiferencialTest < Minitest::Test
+  # Ojo con la última: 'FACTURACIÓN/9' NO es una serie que la AEAT admita (exige
+  # ASCII 32-126), y RegistroAlta la rechaza. Está aquí a propósito, porque estos
+  # casos ejercitan Huella —una primitiva que debe poder hashear cualquier
+  # registro— y el multibyte UTF-8 es donde más divergen las implementaciones.
+  # Que las tres coincidan ahí es la información que se busca.
   CASOS = [
     ['B12345678', 'FA/2026/0001', Date.new(2026, 8, 6),  'F1', '21.00',  '121.00', nil],
     ['B12345678', 'FA/2026/0002', Date.new(2026, 8, 6),  'F1', '21.00',  '121.00', 'A' * 64],
