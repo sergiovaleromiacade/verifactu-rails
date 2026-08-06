@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
-# Verificación cruzada contra implementaciones de referencia independientes.
-# Si las tres coinciden en todos los casos, la serialización es correcta con
-# altísima probabilidad, aunque no tengamos los vectores oficiales de la AEAT.
+# Verificación de la huella en dos niveles:
+#
+#   1. Contra los VECTORES OFICIALES de la AEAT (fuente primaria).
+#   2. Contra dos implementaciones de referencia independientes, que cubren
+#      muchos más casos de los que publica la AEAT.
+#
+# El nivel 1 es el que manda; el 2 da amplitud.
 
 require 'minitest/autorun'
 require 'date'
@@ -38,6 +42,59 @@ class DiferencialTest < Minitest::Test
   ].freeze
 
   MOMENTO = Time.new(2026, 8, 6, 12, 30, 15, '+02:00')
+
+  # Vectores publicados por la AEAT en "Especificaciones técnicas para la
+  # generación de la huella o «hash» de los registros de facturación" v0.1.2,
+  # apartado 6. Son la fuente primaria: encadenan entre sí (1 -> 2 -> 3), así
+  # que este test cubre también el encadenamiento, no solo el hash aislado.
+  OFICIAL_ALTA_1 = '3C464DAF61ACB827C65FDA19F352A4E3BDC2C640E9E9FC4CC058073F38F12F60'
+  OFICIAL_ALTA_2 = 'F7B94CFD8924EDFF273501B01EE5153E4CE8F259766F88CF6ACB8935802A2B97'
+  OFICIAL_ANULACION = '177547C0D57AC74748561D054A9CEC14B4C4EA23D1BEFD6F2E69E3A388F90C68'
+
+  def test_reproduce_los_vectores_oficiales_de_la_aeat
+    primera = VerifactuRails::Huella.alta(
+      id_emisor: '89890001K', num_serie: '12345678/G33',
+      fecha_expedicion: '01-01-2024', tipo_factura: 'F1',
+      cuota_total: BigDecimal('12.35'), importe_total: BigDecimal('123.45'),
+      fecha_hora_gen: '2024-01-01T19:20:30+01:00', huella_anterior: nil
+    )
+    assert_equal OFICIAL_ALTA_1, primera, 'Caso 1: primer registro de la cadena'
+
+    segunda = VerifactuRails::Huella.alta(
+      id_emisor: '89890001K', num_serie: '12345679/G34',
+      fecha_expedicion: '01-01-2024', tipo_factura: 'F1',
+      cuota_total: BigDecimal('12.35'), importe_total: BigDecimal('123.45'),
+      fecha_hora_gen: '2024-01-01T19:20:35+01:00', huella_anterior: primera
+    )
+    assert_equal OFICIAL_ALTA_2, segunda, 'Caso 2: alta encadenada'
+
+    tercera = VerifactuRails::Huella.anulacion(
+      id_emisor: '89890001K', num_serie: '12345679/G34',
+      fecha_expedicion: '01-01-2024',
+      fecha_hora_gen: '2024-01-01T19:20:40+01:00', huella_anterior: segunda
+    )
+    assert_equal OFICIAL_ANULACION, tercera, 'Caso 3: anulación encadenada'
+  end
+
+  # La cadena previa al hash es lo primero que hay que mirar ante un rechazo,
+  # así que también se fija contra el documento oficial.
+  def test_reproduce_la_cadena_oficial_previa_al_hash
+    esperada = 'IDEmisorFactura=89890001K&NumSerieFactura=12345678/G33' \
+               '&FechaExpedicionFactura=01-01-2024&TipoFactura=F1' \
+               '&CuotaTotal=12.35&ImporteTotal=123.45&Huella=' \
+               '&FechaHoraHusoGenRegistro=2024-01-01T19:20:30+01:00'
+
+    cadena = VerifactuRails::Huella.serializar(
+      { 'IDEmisorFactura' => '89890001K', 'NumSerieFactura' => '12345678/G33',
+        'FechaExpedicionFactura' => '01-01-2024', 'TipoFactura' => 'F1',
+        'CuotaTotal' => '12.35', 'ImporteTotal' => '123.45', 'Huella' => '',
+        'FechaHoraHusoGenRegistro' => '2024-01-01T19:20:30+01:00' },
+      VerifactuRails::Huella::CAMPOS_ALTA
+    )
+
+    assert_equal esperada, cadena
+    assert_equal OFICIAL_ALTA_1, VerifactuRails::Huella.digerir(cadena)
+  end
 
   def test_coincide_con_las_dos_referencias
     CASOS.each_with_index do |(emisor, serie, fecha, tipo, cuota, importe, previa), i|

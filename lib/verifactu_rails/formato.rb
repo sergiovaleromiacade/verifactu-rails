@@ -17,9 +17,18 @@ module VerifactuRails
   module Formato
     module_function
 
-    # Los espacios al principio/final son la ambigüedad clásica de la spec.
-    # En vez de decidir por el usuario (trim sí/no), rechazamos: que falle aquí
-    # y no seis meses después con una cadena rota en producción.
+    # Espacios al inicio y al final: la spec NO es ambigua, dice recortarlos.
+    #
+    #   "Los valores de los campos deberán tener la misma información contenida
+    #    en el campo correspondiente del fichero XML, pero eliminando los
+    #    espacios al inicio y al final de cada valor"
+    #   (Especificaciones huella v0.1.2, ap. 3)
+    #
+    # Aquí rechazamos en vez de recortar, que es MÁS ESTRICTO que la norma: un
+    # valor con espacios al borde casi siempre es un defecto de los datos de
+    # origen, y recortar en silencio lo taparía. Los espacios interiores sí se
+    # respetan ("12345678 / G33" es un NumSerieFactura válido y así lo ejemplifica
+    # la propia AEAT).
     def texto(valor, campo)
       cadena = valor.to_s
       raise ArgumentError, "#{campo} no puede estar vacío" if cadena.empty?
@@ -59,6 +68,34 @@ module VerifactuRails
       cadena = texto(valor, campo)
       unless cadena.length == 9
         raise ArgumentError, "#{campo} debe tener 9 caracteres: #{cadena.inspect}"
+      end
+
+      cadena
+    end
+
+    # NumSerieFactura solo admite ASCII imprimible (32-126) y prohíbe además
+    # cinco caracteres concretos (Validaciones v1.2.2, ap. 3.1.3.1).
+    #
+    # Ojo a la asimetría: "&" SÍ está permitido, y es justo el que obliga a
+    # escapar en el XML mientras la huella lo usa crudo. Los que romperían el
+    # XML de verdad (< > ") están prohibidos de entrada por la AEAT.
+    PROHIBIDOS_SERIE = ['"', "'", '<', '>', '='].freeze
+
+    def num_serie(valor, campo = 'NumSerieFactura')
+      cadena = limitar(valor, campo, 60)
+
+      malos = cadena.chars.reject { |c| c.ord.between?(32, 126) }.uniq
+      unless malos.empty?
+        raise ArgumentError,
+              "#{campo} solo admite ASCII imprimible (32-126); sobran: " \
+              "#{malos.map(&:inspect).join(', ')}"
+      end
+
+      encontrados = PROHIBIDOS_SERIE.select { |c| cadena.include?(c) }
+      unless encontrados.empty?
+        raise ArgumentError,
+              "#{campo} no admite los caracteres #{encontrados.map(&:inspect).join(', ')}: " \
+              "#{cadena.inspect}"
       end
 
       cadena

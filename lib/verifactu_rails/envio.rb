@@ -31,6 +31,8 @@ module VerifactuRails
               "Un envío admite como mucho #{MAXIMO_REGISTROS} registros " \
               "(recibidos #{entradas.size}). Parte el lote."
       end
+
+      validar_emisores!
     end
 
     def to_xml
@@ -50,6 +52,21 @@ module VerifactuRails
         end
       end
       constructor.to_xml
+    end
+
+    private
+
+    # El emisor de cada registro tiene que ser el obligado de la cabecera
+    # (Validaciones v1.2.2, ap. 3.1.3.1 y 3.1.4.1). Es una comprobación cruzada
+    # entre cabecera y registros, así que solo se puede hacer aquí: un registro
+    # aislado no sabe en qué envío acabará.
+    def validar_emisores!
+      intrusos = entradas.map(&:first).map(&:id_emisor).uniq.reject { |n| n == nif_obligado }
+      return if intrusos.empty?
+
+      raise ArgumentError,
+            "Todos los registros deben emitirlos el obligado de la cabecera " \
+            "(#{nif_obligado}). Ajenos: #{intrusos.join(', ')}"
     end
   end
 end

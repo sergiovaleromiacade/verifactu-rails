@@ -26,7 +26,7 @@ module VerifactuRails
 
     def initialize(id_emisor:, num_serie:, fecha_expedicion:, huella:)
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFactura anterior')
-      @num_serie = Formato.limitar(num_serie, 'NumSerieFactura anterior', 60)
+      @num_serie = Formato.num_serie(num_serie)
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
       @huella = Formato.limitar(huella, 'Huella anterior', 64)
 
@@ -50,7 +50,7 @@ module VerifactuRails
 
     def initialize(id_emisor:, num_serie:, fecha_expedicion:)
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFactura')
-      @num_serie = Formato.limitar(num_serie, 'NumSerieFactura', 60)
+      @num_serie = Formato.num_serie(num_serie)
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
     end
 
@@ -123,6 +123,15 @@ module VerifactuRails
     TIPOS_RECTIFICATIVA = %w[S I].freeze # S = sustitutiva, I = incremental
     MAXIMO_REFERENCIADAS = 1000          # maxOccurs del esquema
 
+    # Destinatarios: obligatorio en unos tipos, prohibido en otros
+    # (Validaciones v1.2.2, ap. 3.1.3.13). F2 y R5 son las simplificadas, donde
+    # por definición no se identifica al destinatario.
+    TIPOS_CON_DESTINATARIO = %w[F1 F3 R1 R2 R3 R4].freeze
+    TIPOS_SIN_DESTINATARIO = %w[F2 R5].freeze
+
+    # Entrada en vigor de la Orden HAC/1177/2024.
+    FECHA_MINIMA = Date.new(2024, 10, 28)
+
     attr_reader :id_emisor, :num_serie, :fecha_expedicion, :nombre_razon_emisor,
                 :tipo_factura, :descripcion_operacion, :desglose, :cuota_total,
                 :importe_total, :sistema_informatico, :fecha_hora_gen,
@@ -137,7 +146,7 @@ module VerifactuRails
                    tipo_rectificativa: nil, facturas_rectificadas: [],
                    facturas_sustituidas: [], importe_rectificacion: nil)
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFactura')
-      @num_serie = Formato.limitar(num_serie, 'NumSerieFactura', 60)
+      @num_serie = Formato.num_serie(num_serie)
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
       @nombre_razon_emisor = Formato.limitar(nombre_razon_emisor, 'NombreRazonEmisor', 120)
       @tipo_factura = Formato.enumerado(tipo_factura, 'TipoFactura', TIPOS_FACTURA)
@@ -162,6 +171,8 @@ module VerifactuRails
         raise ArgumentError, "Como mucho #{MAXIMO_REFERENCIADAS} destinatarios por registro"
       end
 
+      validar_fecha_expedicion!(fecha_expedicion)
+      validar_destinatarios!
       validar_rectificativa!
       validar_sustitutiva!
     end
@@ -278,6 +289,34 @@ module VerifactuRails
       end
     end
 
+    # Validaciones v1.2.2, ap. 3.1.3.1. La fecha se compara ya normalizada para
+    # que dé igual si entró como Date o como cadena.
+    def validar_fecha_expedicion!(original)
+      fecha = original.is_a?(Date) ? original : Date.strptime(@fecha_expedicion, '%d-%m-%Y')
+
+      if fecha < FECHA_MINIMA
+        raise ArgumentError,
+              "FechaExpedicionFactura no puede ser anterior a " \
+              "#{FECHA_MINIMA.strftime('%d-%m-%Y')}, entrada en vigor de VERI*FACTU: " \
+              "#{@fecha_expedicion}"
+      end
+      return unless fecha > Date.today
+
+      raise ArgumentError,
+            "FechaExpedicionFactura no puede ser futura: #{@fecha_expedicion}"
+    end
+
+    def validar_destinatarios!
+      if TIPOS_CON_DESTINATARIO.include?(tipo_factura) && destinatarios.empty?
+        raise ArgumentError,
+              "TipoFactura #{tipo_factura} exige al menos un destinatario"
+      end
+      return unless TIPOS_SIN_DESTINATARIO.include?(tipo_factura) && !destinatarios.empty?
+
+      raise ArgumentError,
+            "TipoFactura #{tipo_factura} es simplificada y no admite destinatarios"
+    end
+
     # Coherencia de las rectificativas. El XSD deja casi todo opcional, así que
     # estas reglas no las impone el esquema: sin ellas se puede montar un R1
     # sintácticamente válido que la AEAT rechaza con un error mucho menos claro.
@@ -288,11 +327,9 @@ module VerifactuRails
                 "TipoFactura #{tipo_factura} es rectificativa y exige " \
                 "tipo_rectificativa: 'S' (sustitutiva) o 'I' (incremental)"
         end
-        if facturas_rectificadas.empty?
-          raise ArgumentError,
-                "TipoFactura #{tipo_factura} exige facturas_rectificadas: " \
-                'indica qué factura se rectifica'
-        end
+        # facturas_rectificadas NO es obligatoria: la AEAT dice literalmente
+        # "sólo podrá incluirse esta agrupación (no es obligatoria) si
+        # TipoFactura es R1-R5" (Validaciones v1.2.2, ap. 3.1.3.4).
       else
         unless tipo_rectificativa.nil? && facturas_rectificadas.empty?
           raise ArgumentError,
@@ -324,12 +361,10 @@ module VerifactuRails
       end
     end
 
-    # F3 es la factura emitida en sustitución de simplificadas.
+    # F3 es la factura emitida en sustitución de simplificadas. La agrupación
+    # tampoco es obligatoria ahí, solo exclusiva de F3 (Validaciones v1.2.2,
+    # ap. 3.1.3.5).
     def validar_sustitutiva!
-      if tipo_factura == 'F3' && facturas_sustituidas.empty?
-        raise ArgumentError,
-              'TipoFactura F3 (sustitución de simplificadas) exige facturas_sustituidas'
-      end
       if tipo_factura != 'F3' && !facturas_sustituidas.empty?
         raise ArgumentError,
               "TipoFactura #{tipo_factura} no admite facturas_sustituidas (usa F3)"
@@ -355,7 +390,7 @@ module VerifactuRails
     def initialize(id_emisor:, num_serie:, fecha_expedicion:,
                    sistema_informatico:, fecha_hora_gen:)
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFacturaAnulada')
-      @num_serie = Formato.limitar(num_serie, 'NumSerieFacturaAnulada', 60)
+      @num_serie = Formato.num_serie(num_serie, 'NumSerieFacturaAnulada')
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
       @sistema_informatico = sistema_informatico
       @fecha_hora_gen = Formato.marca_temporal(fecha_hora_gen)

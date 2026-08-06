@@ -10,8 +10,8 @@ Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rai
 
 Esto es una **librería**: calcula la huella encadenada, formatea importes de forma
 canónica, genera el XML de los registros y habla con la AEAT por TLS mutuo. No es
-un sistema de facturación llave
-en mano, y no se afirma aquí que su uso baste para cumplir el RD 1007/2023 ni la
+un sistema de facturación llave en mano, y no se afirma aquí que su uso baste para
+cumplir el RD 1007/2023 ni la
 Orden HAC/1177/2024. La responsabilidad de la declaración responsable del art. 13
 recae en quien despliega el sistema de facturación, no en el autor de esta gema.
 Ver [COMPLIANCE.md](COMPLIANCE.md) cuando exista.
@@ -51,8 +51,9 @@ NIF+serie).
 
 ### Rectificativas
 
-`R1`–`R5` exigen `tipo_rectificativa:` y `facturas_rectificadas:`; `F3` exige
-`facturas_sustituidas:`. La diferencia entre los dos tipos importa:
+`R1`–`R5` exigen `tipo_rectificativa:`. `facturas_rectificadas:` es opcional pero
+exclusiva de `R1`–`R5`, y `facturas_sustituidas:` es opcional pero exclusiva de
+`F3`. La diferencia entre los dos tipos de rectificativa sí importa:
 
 - **`'S'` sustitutiva** — la factura reexpresa el importe corregido completo, así
   que hay que declarar el original en `importe_rectificacion:`.
@@ -105,9 +106,18 @@ xml = Envio.new(nif_obligado: 'B12345678', nombre_obligado: 'Tu Empresa SL',
 ```
 
 El registro calcula su huella y monta su XML **a partir de los mismos campos ya
-normalizados**. Es deliberado: calcular la huella por un lado y montar el XML por
-otro es el error más caro del dominio, porque la AEAT recalcula la huella sobre el
-XML que recibe y rechaza el registro si difiere en un solo decimal.
+normalizados**, para que no puedan divergir: la AEAT recalcula la huella sobre el
+XML que recibe.
+
+Matiz importante, contrastado con la fuente primaria: una huella que no cuadra
+**no provoca rechazo**. Es un *error admisible*, así que el registro se acepta y
+queda registrado, pero **obliga a subsanarlo** (Validaciones v1.2.2, ap. 4.3.1).
+Sigue siendo algo que no quieres, solo que el coste es una subsanación y no un
+envío perdido.
+
+Otro matiz: al generar la huella, la AEAT ignora los ceros a la derecha en los
+campos numéricos —`123.1` y `123.10` valen igual—, de modo que la exigencia real
+no es un formato concreto sino **coherencia entre la huella y el XML**.
 
 Cuando la AEAT rechace por huella, lo primero que hay que mirar no es el digest
 sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
@@ -117,8 +127,10 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 - **`Float` está prohibido** en importes: se rechaza en la entrada. Usa
   `BigDecimal`, `Integer` o `String`. El redondeo es `ROUND_HALF_UP`, no el
   bancario que Ruby trae por defecto.
-- **Los espacios al borde se rechazan**, no se recortan. La especificación es
-  ambigua y es preferible fallar pronto y ruidosamente.
+- **Los espacios al borde se rechazan**, no se recortan. La especificación manda
+  recortarlos, así que esto es *más estricto* que la norma: un valor con espacios
+  al borde casi siempre es un defecto de los datos de origen y recortar en
+  silencio lo taparía. Los espacios interiores sí se respetan.
 - **Nunca `VERIFY_NONE`.** Si falla la verificación TLS contra la AEAT, falta la
   cadena de la CA en `ca_file`; desactivar la comprobación no es el arreglo.
 - **El encadenamiento es estrictamente serial.** Rails procesa en paralelo: hace
@@ -132,14 +144,15 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 bundle exec rake test
 ```
 
-81 tests, ~1200 aserciones. Incluye verificación cruzada de la huella contra
+90 tests, ~1230 aserciones. Incluye verificación cruzada de la huella contra
 `josemmo/Verifactu-PHP` y `mybooking-es/verifactu-rb`, y validación del XML
 generado contra los XSD oficiales de la AEAT, versionados en
 [lib/verifactu_rails/schemas](lib/verifactu_rails/schemas/PROCEDENCIA.md).
 
-Los vectores oficiales de la AEAT todavía **no** están incorporados: hoy tenemos
-concordancia con dos implementaciones independientes, que no es lo mismo que la
-fuente primaria.
+Los **tres vectores oficiales** de la AEAT (Especificaciones huella v0.1.2, ap. 6)
+están incorporados y se reproducen exactamente, incluido el encadenamiento entre
+ellos. La verificación contra las otras dos implementaciones se conserva porque
+cubre muchos más casos de los que la AEAT publica.
 
 ## Licencia
 

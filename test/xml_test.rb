@@ -25,6 +25,12 @@ class XmlTest < Minitest::Test
                 cuota_repercutida: BigDecimal('21.00'), **extra)
   end
 
+  def cliente
+    Destinatario.new(nombre_razon: 'Cliente SL', nif: 'B87654321')
+  end
+
+  # F1 exige destinatario, así que va por defecto: un alta sin él nunca fue
+  # válida para la AEAT aunque el XSD la aceptara.
   def alta(**extra)
     RegistroAlta.new(
       id_emisor: 'B12345678', num_serie: 'FA/2026/0001',
@@ -32,7 +38,7 @@ class XmlTest < Minitest::Test
       tipo_factura: 'F1', descripcion_operacion: 'Servicios de agosto',
       desglose: [detalle], cuota_total: BigDecimal('21.00'),
       importe_total: BigDecimal('121.00'), sistema_informatico: sistema,
-      fecha_hora_gen: MOMENTO, **extra
+      fecha_hora_gen: MOMENTO, destinatarios: [cliente], **extra
     )
   end
 
@@ -262,11 +268,13 @@ class XmlTest < Minitest::Test
     assert_match(/tipo_rectificativa/, error.message)
   end
 
-  def test_una_rectificativa_exige_saber_que_factura_rectifica
-    error = assert_raises(ArgumentError) do
-      alta(tipo_factura: 'R1', tipo_rectificativa: 'I')
-    end
-    assert_match(/facturas_rectificadas/, error.message)
+  # La AEAT dice literalmente que la agrupación "no es obligatoria" (Validaciones
+  # v1.2.2, ap. 3.1.3.4). Exigirla sería más estricto que la norma.
+  def test_una_rectificativa_no_esta_obligada_a_listar_las_rectificadas
+    registro = alta(tipo_factura: 'R1', tipo_rectificativa: 'I')
+
+    assert_empty registro.facturas_rectificadas
+    assert_empty Esquema.errores(envio([[registro, nil]]))
   end
 
   def test_una_factura_normal_no_admite_campos_de_rectificacion
@@ -290,8 +298,9 @@ class XmlTest < Minitest::Test
     assert_match(/incremental/, error.message)
   end
 
-  def test_f3_exige_facturas_sustituidas_y_el_resto_no_las_admite
-    assert_raises(ArgumentError) { alta(tipo_factura: 'F3') }
+  # Tampoco es obligatoria en F3, solo exclusiva de F3 (ap. 3.1.3.5).
+  def test_las_facturas_sustituidas_son_exclusivas_de_f3_pero_no_obligatorias
+    assert_empty alta(tipo_factura: 'F3').facturas_sustituidas
     assert_raises(ArgumentError) { alta(facturas_sustituidas: [rectificada]) }
   end
 
@@ -326,6 +335,67 @@ class XmlTest < Minitest::Test
   def test_rechaza_float_en_los_importes
     assert_raises(ArgumentError) { alta(importe_total: 121.0) }
     assert_raises(ArgumentError) { detalle(base_imponible: 100.0) }
+  end
+
+  # --- validaciones de negocio de la AEAT (Validaciones v1.2.2) --------------
+
+  # Ap. 3.1.3.13. F2 y R5 son las simplificadas: no se identifica al destinatario.
+  def test_los_tipos_no_simplificados_exigen_destinatario
+    %w[F1 F3 R1 R2 R3 R4].each do |tipo|
+      extra = tipo.start_with?('R') ? { tipo_rectificativa: 'I' } : {}
+      assert_raises(ArgumentError, "#{tipo} debería exigir destinatario") do
+        alta(tipo_factura: tipo, destinatarios: [], **extra)
+      end
+    end
+  end
+
+  def test_las_simplificadas_no_admiten_destinatario
+    %w[F2 R5].each do |tipo|
+      extra = tipo.start_with?('R') ? { tipo_rectificativa: 'I' } : {}
+      assert_raises(ArgumentError, "#{tipo} no debería admitir destinatario") do
+        alta(tipo_factura: tipo, **extra)
+      end
+      assert_empty Esquema.errores(
+        envio([[alta(tipo_factura: tipo, destinatarios: [], **extra), nil]])
+      )
+    end
+  end
+
+  # Ap. 3.1.3.1. Ojo: "&" sí está permitido, y es justo el que hay que escapar
+  # en el XML. Los que romperían el XML (< > ") los prohíbe la propia AEAT.
+  def test_la_serie_rechaza_los_caracteres_que_prohibe_la_aeat
+    ['A"1', "A'1", 'A<1', 'A>1', 'A=1'].each do |serie|
+      assert_raises(ArgumentError, "debería rechazar #{serie.inspect}") do
+        alta(num_serie: serie)
+      end
+    end
+  end
+
+  def test_la_serie_rechaza_lo_que_no_sea_ascii_imprimible
+    assert_raises(ArgumentError) { alta(num_serie: "FA\t1") }
+    assert_raises(ArgumentError) { alta(num_serie: 'FACTURACIÓN/1') }
+  end
+
+  def test_la_serie_admite_ampersand
+    assert_equal 'FA&1', alta(num_serie: 'FA&1').num_serie
+  end
+
+  # Ap. 3.1.3.1: no anterior a la entrada en vigor ni futura.
+  def test_la_fecha_de_expedicion_respeta_los_limites_de_la_aeat
+    assert_raises(ArgumentError) { alta(fecha_expedicion: Date.new(2024, 10, 27)) }
+    assert_raises(ArgumentError) { alta(fecha_expedicion: Date.today + 1) }
+
+    assert alta(fecha_expedicion: Date.new(2024, 10, 28))
+  end
+
+  # Ap. 3.1.3.1 y 3.1.4.1: comprobación cruzada entre cabecera y registros, que
+  # solo el envío puede hacer.
+  def test_el_emisor_de_cada_registro_debe_ser_el_obligado_de_la_cabecera
+    error = assert_raises(ArgumentError) do
+      Envio.new(nif_obligado: 'B99999999', nombre_obligado: 'Otra SL',
+                entradas: [[alta, nil]])
+    end
+    assert_match(/B12345678/, error.message)
   end
 
   def test_el_desglose_ayuda_a_cuadrar_totales_sin_imponerlos

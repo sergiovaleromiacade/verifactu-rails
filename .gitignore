@@ -1,8 +1,11 @@
 /.bundle/
 /pkg/
 /tmp/
-/doc/
 Gemfile.lock
+
+# doc/ SÍ se versiona: contiene FUENTES.md, no documentación generada.
+# Los PDF de la AEAT no, que pesan y no diffean.
+/doc/*.pdf
 *.gem
 
 # Nunca versionar credenciales del obligado tributario.
