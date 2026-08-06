@@ -697,6 +697,80 @@ class XmlTest < Minitest::Test
     assert_equal interes, nombres.select { |n| interes.include?(n) }
   end
 
+  # --- robustez: fallar al construir, nunca al serializar --------------------
+
+  # Array(hash) devuelve los PARES del hash, así que un destinatario suelto se
+  # convertía en dos "destinatarios" que pasaban el conteo y solo reventaban con
+  # un NoMethodError al serializar.
+  def test_un_hash_suelto_no_se_convierte_en_destinatarios_fantasma
+    error = assert_raises(ValidacionError) do
+      alta(destinatarios: { nombre_razon: 'X', nif: 'B87654321' })
+    end
+    assert_match(/destinatarios debe ser un/, error.message)
+  end
+
+  def test_las_colecciones_rechazan_elementos_de_otra_clase
+    assert_raises(ValidacionError) { alta(destinatarios: [cliente, 'Pepe SL']) }
+    assert_raises(ValidacionError) do
+      alta(tipo_factura: 'R1', tipo_rectificativa: 'I', facturas_rectificadas: [{}])
+    end
+  end
+
+  def test_los_colaboradores_se_comprueban_al_construir
+    error = assert_raises(ValidacionError) do
+      alta(importe_rectificacion: { base: 100, cuota: 21 },
+           tipo_factura: 'R1', tipo_rectificativa: 'S')
+    end
+    assert_match(/importe_rectificacion debe ser/, error.message)
+
+    assert_raises(ValidacionError) { alta(sistema_informatico: 'no soy un sistema') }
+  end
+
+  # Un solo objeto sin envolver en array es una comodidad razonable.
+  def test_un_destinatario_suelto_se_admite_sin_envolver
+    assert_equal 1, alta(destinatarios: cliente).destinatarios.size
+  end
+
+  # DateTime < Date, así que entraba con su hora puesta y, como Date.today es
+  # medianoche, cualquier hora de hoy se rechazaba como "futura".
+  def test_un_datetime_de_hoy_no_se_rechaza_como_futuro
+    assert_instance_of RegistroAlta, alta(fecha_expedicion: DateTime.now)
+    assert_instance_of RegistroAlta, alta(fecha_expedicion: Time.now)
+    assert_instance_of RegistroAlta, alta(fecha_expedicion: Date.today)
+  end
+
+  def test_una_fecha_nil_da_error_del_dominio_y_no_nomethoderror
+    error = assert_raises(ValidacionError) { alta(fecha_expedicion: nil) }
+    assert_match(/Fecha inválida/, error.message)
+  end
+
+  # sf:Tipo2.2Type no admite signo ni más de tres dígitos enteros.
+  def test_los_porcentajes_rechazan_signo_y_cuatro_digitos
+    [BigDecimal('-21'), BigDecimal('1000')].each do |malo|
+      error = assert_raises(ValidacionError) do
+        Detalle.new(base_imponible: BigDecimal('100.00'), calificacion: 'S1',
+                    tipo_impositivo: malo, cuota_repercutida: BigDecimal('21.00'))
+      end
+      assert_match(/porcentaje sin signo/, error.message)
+    end
+  end
+
+  def test_el_envio_comprueba_la_forma_de_las_entradas
+    assert_raises(ValidacionError) { envio([[alta]]) }        # par incompleto
+    assert_raises(ValidacionError) { envio([alta]) }          # sin par
+    assert_raises(ValidacionError) { envio([[alta, 'ayer']]) }
+    assert_raises(ValidacionError) do
+      Envio.new(nif_obligado: 'B12345678', nombre_obligado: 'X', entradas: nil)
+    end
+  end
+
+  # RegistroAnulacion dice que quiere fallar antes de construir nada, pero el
+  # sitio donde se conoce el anterior es el envío.
+  def test_una_anulacion_sin_anterior_falla_al_construir_el_envio
+    error = assert_raises(ValidacionError) { envio([[anulacion, nil]]) }
+    assert_match(/no puede iniciar la cadena/, error.message)
+  end
+
   # --- validaciones de negocio de la AEAT (Validaciones v1.2.2) --------------
 
   # Ap. 3.1.3.13. F2 y R5 son las simplificadas: no se identifica al destinatario.

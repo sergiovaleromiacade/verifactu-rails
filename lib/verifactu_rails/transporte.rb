@@ -4,6 +4,7 @@ require 'net/http'
 require 'uri'
 require_relative 'certificado'
 require_relative 'error'
+require_relative 'formato'
 
 module VerifactuRails
   class TransporteError < StandardError
@@ -41,9 +42,12 @@ module VerifactuRails
         raise ValidacionError, "Entorno inválido: #{entorno.inspect} (usa :pruebas o :produccion)"
       end
 
-      @certificado = certificado
+      @certificado = Formato.objeto(certificado, 'certificado', Certificado)
       @entorno = entorno
-      @sello = sello.nil? ? certificado.sello? : sello
+      # Sin normalizar, un sello: 'S' llegaba a ENDPOINTS.fetch([entorno, 'S']) y
+      # daba un KeyError, justo al lado de la comprobación de entorno que sí da
+      # un error del dominio.
+      @sello = sello.nil? ? @certificado.sello? : Formato.si_no(sello, 'sello') == 'S'
       @url = url || ENDPOINTS.fetch([entorno, @sello])
       @ca_file = ca_file
       @timeout = timeout

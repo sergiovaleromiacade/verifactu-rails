@@ -47,6 +47,21 @@ module VerifactuRails
       resultado == '-0.00' ? '0.00' : resultado
     end
 
+    # sf:Tipo2.2Type, para los porcentajes: patrón \d{1,3}(\.\d{0,2})? — SIN
+    # signo y con tres dígitos enteros como mucho. Es un tipo distinto de
+    # sf:ImporteSgn12.2Type, así que formatear con `formatear` a secas dejaba
+    # pasar un -21.00 o un 1000.00 que luego rechaza el esquema.
+    def porcentaje(valor, campo)
+      cadena = formatear(valor)
+      unless cadena.match?(/\A\d{1,3}\.\d{2}\z/)
+        raise ValidacionError,
+              "#{campo} debe ser un porcentaje sin signo y de hasta 3 dígitos " \
+              "enteros (recibido: #{cadena})"
+      end
+
+      cadena
+    end
+
     def parsear_string(cadena)
       texto = cadena.strip
       unless texto.match?(/\A-?\d+([.,]\d+)?\z/)

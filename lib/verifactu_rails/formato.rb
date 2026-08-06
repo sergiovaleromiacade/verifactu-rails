@@ -45,6 +45,13 @@ module VerifactuRails
     # Tipo sf:fecha del XSD: exactamente dd-mm-yyyy.
     def fecha(valor)
       objeto = valor.is_a?(String) ? Date.strptime(valor, '%d-%m-%Y') : valor
+      # Guarda explícita, como en marca_temporal: sin ella, un nil se escapaba
+      # del contrato de errores del módulo con un NoMethodError en vez de un
+      # ValidacionError, porque el rescue de abajo no captura NoMethodError.
+      unless objeto.respond_to?(:strftime)
+        raise ValidacionError, "Fecha inválida (se espera Date o 'dd-mm-yyyy'): #{valor.inspect}"
+      end
+
       objeto.strftime('%d-%m-%Y')
     rescue ArgumentError, TypeError
       raise ValidacionError, "Fecha inválida (se espera Date o 'dd-mm-yyyy'): #{valor.inspect}"
@@ -127,6 +134,43 @@ module VerifactuRails
         raise ValidacionError,
               "#{campo} debe ser true/false o 'S'/'N' (recibido: #{valor.inspect})"
       end
+    end
+
+    # Colección homogénea de objetos de valor.
+    #
+    # No basta con Array(): Array(hash) devuelve los PARES del hash, así que un
+    # `destinatarios: {nombre_razon: 'X', nif: '...'}` se convertía en dos
+    # "destinatarios" que pasaban las validaciones de conteo y solo reventaban
+    # al serializar, con un NoMethodError sobre un Array. Aquí el criterio es el
+    # mismo que en el resto de la gema: si el objeto se construye, es emitible.
+    def coleccion(valor, campo, clase, maximo: nil)
+      lista = valor.nil? ? [] : Array(valor)
+
+      if valor.is_a?(Hash) || (valor && !valor.is_a?(Array) && !valor.is_a?(clase))
+        raise ValidacionError,
+              "#{campo} debe ser un #{clase} o un array de #{clase} " \
+              "(recibido: #{valor.class})"
+      end
+      lista = [valor] if valor.is_a?(clase)
+
+      intrusos = lista.reject { |e| e.is_a?(clase) }.map(&:class).uniq
+      unless intrusos.empty?
+        raise ValidacionError,
+              "#{campo} solo admite #{clase} (encontrados: #{intrusos.join(', ')})"
+      end
+      if maximo && lista.size > maximo
+        raise ValidacionError,
+              "#{campo} admite como mucho #{maximo} elementos (recibidos #{lista.size})"
+      end
+
+      lista
+    end
+
+    # Colaborador obligatorio de una clase concreta.
+    def objeto(valor, campo, clase)
+      return valor if valor.is_a?(clase)
+
+      raise ValidacionError, "#{campo} debe ser un #{clase} (recibido: #{valor.class})"
     end
 
     def enumerado(valor, campo, admitidos)

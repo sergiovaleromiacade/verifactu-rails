@@ -36,9 +36,9 @@ module VerifactuRails
       @exenta = exenta && Formato.enumerado(exenta, 'OperacionExenta', EXENCIONES)
       @impuesto = impuesto && Formato.enumerado(impuesto, 'Impuesto', IMPUESTOS)
       @clave_regimen = clave_regimen && Formato.enumerado(clave_regimen, 'ClaveRegimen', REGIMENES)
-      @tipo_impositivo = tipo_impositivo && Importe.formatear(tipo_impositivo)
+      @tipo_impositivo = tipo_impositivo && Importe.porcentaje(tipo_impositivo, 'TipoImpositivo')
       @cuota_repercutida = cuota_repercutida && Importe.formatear(cuota_repercutida)
-      @tipo_recargo = tipo_recargo && Importe.formatear(tipo_recargo)
+      @tipo_recargo = tipo_recargo && Importe.porcentaje(tipo_recargo, 'TipoRecargoEquivalencia')
       @cuota_recargo = cuota_recargo && Importe.formatear(cuota_recargo)
 
       validar_coherencia!

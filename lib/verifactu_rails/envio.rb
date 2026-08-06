@@ -23,9 +23,9 @@ module VerifactuRails
     def initialize(nif_obligado:, nombre_obligado:, entradas:)
       @nif_obligado = Formato.nif(nif_obligado, 'NIF del obligado')
       @nombre_obligado = Formato.limitar(nombre_obligado, 'NombreRazon del obligado', 120)
-      @entradas = entradas
+      @entradas = normalizar(entradas)
 
-      raise ValidacionError, 'El envío necesita al menos un registro' if entradas.empty?
+      raise ValidacionError, 'El envío necesita al menos un registro' if @entradas.empty?
 
       if entradas.size > MAXIMO_REGISTROS
         raise ValidacionError,
@@ -56,6 +56,47 @@ module VerifactuRails
     end
 
     private
+
+    # `entradas` es una lista de pares [registro, anterior]. Sin comprobarla:
+    #   - [[alta]] desestructura con anterior=nil y el registro sale como
+    #     PrimerRegistro="S" en silencio, que es un error admisible en la AEAT si
+    #     ya hay registros de ese SIF.
+    #   - una anulación con anterior=nil se construía y solo fallaba al
+    #     serializar, pese a que RegistroAnulacion dice explícitamente que quiere
+    #     fallar antes. El sitio donde se conoce el anterior es este.
+    def normalizar(entradas)
+      unless entradas.is_a?(Array)
+        raise ValidacionError, "entradas debe ser un array de pares [registro, anterior] " \
+                               "(recibido: #{entradas.class})"
+      end
+
+      entradas.each_with_index.map do |entrada, i|
+        unless entrada.is_a?(Array) && entrada.size == 2
+          raise ValidacionError,
+                "entradas[#{i}] debe ser un par [registro, anterior]; para el primero " \
+                'de la cadena, [registro, nil]'
+        end
+
+        registro, anterior = entrada
+        unless registro.is_a?(RegistroAlta) || registro.is_a?(RegistroAnulacion)
+          raise ValidacionError,
+                "entradas[#{i}] debe llevar un RegistroAlta o RegistroAnulacion " \
+                "(recibido: #{registro.class})"
+        end
+        unless anterior.nil? || anterior.is_a?(RegistroAnterior)
+          raise ValidacionError,
+                "entradas[#{i}]: el anterior debe ser RegistroAnterior o nil " \
+                "(recibido: #{anterior.class})"
+        end
+        if anterior.nil? && registro.is_a?(RegistroAnulacion)
+          raise ValidacionError,
+                "entradas[#{i}]: una anulación no puede iniciar la cadena, exige " \
+                'el registro anterior'
+        end
+
+        entrada
+      end
+    end
 
     # El emisor de cada registro tiene que ser el obligado de la cabecera
     # (Validaciones v1.2.2, ap. 3.1.3.1 y 3.1.4.1). Es una comprobación cruzada

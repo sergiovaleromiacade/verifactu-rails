@@ -192,15 +192,21 @@ module VerifactuRails
       @desglose = desglose.is_a?(Desglose) ? desglose : Desglose.new(desglose)
       @cuota_total = Importe.formatear(cuota_total)
       @importe_total = Importe.formatear(importe_total)
-      @sistema_informatico = sistema_informatico
+      @sistema_informatico = Formato.objeto(sistema_informatico, 'sistema_informatico',
+                                            SistemaInformatico)
       @fecha_hora_gen = Formato.marca_temporal(fecha_hora_gen)
-      @destinatarios = Array(destinatarios)
+      @destinatarios = Formato.coleccion(destinatarios, 'destinatarios', Destinatario,
+                                         maximo: MAXIMO_REFERENCIADAS)
       @fecha_operacion = fecha_operacion && Formato.fecha(fecha_operacion)
       @tipo_rectificativa = tipo_rectificativa &&
                             Formato.enumerado(tipo_rectificativa, 'TipoRectificativa', TIPOS_RECTIFICATIVA)
-      @facturas_rectificadas = Array(facturas_rectificadas)
-      @facturas_sustituidas = Array(facturas_sustituidas)
-      @importe_rectificacion = importe_rectificacion
+      @facturas_rectificadas = Formato.coleccion(facturas_rectificadas, 'facturas_rectificadas',
+                                                 IdFactura, maximo: MAXIMO_REFERENCIADAS)
+      @facturas_sustituidas = Formato.coleccion(facturas_sustituidas, 'facturas_sustituidas',
+                                                IdFactura, maximo: MAXIMO_REFERENCIADAS)
+      @importe_rectificacion = importe_rectificacion &&
+                               Formato.objeto(importe_rectificacion, 'importe_rectificacion',
+                                              ImporteRectificacion)
       @subsanacion = Formato.si_no(subsanacion, 'Subsanacion')
       @rechazo_previo = rechazo_previo &&
                         Formato.enumerado(rechazo_previo, 'RechazoPrevio', RECHAZOS_PREVIOS)
@@ -212,13 +218,6 @@ module VerifactuRails
                               Formato.limitar(num_registro_acuerdo, 'NumRegistroAcuerdoFacturacion', 15)
       @id_acuerdo_sistema = id_acuerdo_sistema &&
                             Formato.limitar(id_acuerdo_sistema, 'IdAcuerdoSistemaInformatico', 16)
-
-      unless @sistema_informatico.is_a?(SistemaInformatico)
-        raise ValidacionError, 'sistema_informatico debe ser VerifactuRails::SistemaInformatico'
-      end
-      if @destinatarios.size > MAXIMO_REFERENCIADAS
-        raise ValidacionError, "Como mucho #{MAXIMO_REFERENCIADAS} destinatarios por registro"
-      end
 
       validar_fecha_expedicion!(fecha_expedicion)
       validar_subsanacion!
@@ -353,8 +352,13 @@ module VerifactuRails
 
     # Validaciones v1.2.2, ap. 3.1.3.1. La fecha se compara ya normalizada para
     # que dé igual si entró como Date o como cadena.
-    def validar_fecha_expedicion!(original)
-      fecha = original.is_a?(Date) ? original : Date.strptime(@fecha_expedicion, '%d-%m-%Y')
+    def validar_fecha_expedicion!(_original)
+      # Se reparsea SIEMPRE la fecha ya normalizada, en vez de mirar el objeto
+      # original. Con `original.is_a?(Date)` un DateTime entraba con su hora
+      # puesta, y como Date.today es medianoche, `DateTime.now > Date.today` es
+      # cierto: se rechazaba como "futura" una factura de hoy. Time no lo sufría
+      # porque no es un Date, así que la asimetría además era invisible.
+      fecha = Date.strptime(@fecha_expedicion, '%d-%m-%Y')
 
       if fecha < FECHA_MINIMA
         raise ValidacionError,
@@ -463,7 +467,6 @@ module VerifactuRails
       end
 
       validar_importe_rectificacion!
-      validar_limite(facturas_rectificadas, 'facturas_rectificadas')
     end
 
     # Una sustitutiva reexpresa el importe corregido completo, así que hay que
@@ -502,16 +505,6 @@ module VerifactuRails
         raise ValidacionError,
               "TipoFactura #{tipo_factura} no admite facturas_sustituidas (usa F3)"
       end
-
-      validar_limite(facturas_sustituidas, 'facturas_sustituidas')
-    end
-
-    def validar_limite(facturas, campo)
-      return if facturas.size <= MAXIMO_REFERENCIADAS
-
-      raise ValidacionError,
-            "#{campo} admite como mucho #{MAXIMO_REFERENCIADAS} facturas " \
-            "(recibidas #{facturas.size})"
     end
   end
 
@@ -535,15 +528,12 @@ module VerifactuRails
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFacturaAnulada')
       @num_serie = Formato.num_serie(num_serie, 'NumSerieFacturaAnulada')
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
-      @sistema_informatico = sistema_informatico
+      @sistema_informatico = Formato.objeto(sistema_informatico, 'sistema_informatico',
+                                            SistemaInformatico)
       @fecha_hora_gen = Formato.marca_temporal(fecha_hora_gen)
       @sin_registro_previo = Formato.si_no(sin_registro_previo, 'SinRegistroPrevio')
       @rechazo_previo = rechazo_previo &&
                         Formato.enumerado(rechazo_previo, 'RechazoPrevio', RECHAZOS_PREVIOS)
-
-      unless @sistema_informatico.is_a?(SistemaInformatico)
-        raise ValidacionError, 'sistema_informatico debe ser VerifactuRails::SistemaInformatico'
-      end
     end
 
     # Una anulación nunca puede iniciar la cadena, así que `anterior` es
