@@ -2,13 +2,15 @@
 
 Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rails.
 
-> **Estado: en desarrollo, sin release público.** El generador de XML y la capa
-> Rails todavía no existen. La API puede cambiar sin aviso.
+> **Estado: en desarrollo, sin release público.** La capa Rails todavía no existe
+> y nada se ha probado aún contra el entorno real de la AEAT. La API puede cambiar
+> sin aviso.
 
 ## Qué es y qué no es
 
 Esto es una **librería**: calcula la huella encadenada, formatea importes de forma
-canónica y habla con la AEAT por TLS mutuo. No es un sistema de facturación llave
+canónica, genera el XML de los registros y habla con la AEAT por TLS mutuo. No es
+un sistema de facturación llave
 en mano, y no se afirma aquí que su uso baste para cumplir el RD 1007/2023 ni la
 Orden HAC/1177/2024. La responsabilidad de la declaración responsable del art. 13
 recae en quien despliega el sistema de facturación, no en el autor de esta gema.
