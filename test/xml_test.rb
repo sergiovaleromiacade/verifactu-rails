@@ -85,6 +85,19 @@ class XmlTest < Minitest::Test
     assert_empty Esquema.errores(envio([[registro, nil]]))
   end
 
+  # El prefijo es irrelevante para un parser (lo que liga es el URI), pero se
+  # emiten "sum" y "sum1" a propósito: son los que usa la AEAT en sus ejemplos de
+  # petición, así que la salida se puede comparar con ellos línea a línea al
+  # depurar un rechazo. Lo que este test fija de verdad es el URI.
+  def test_los_namespaces_son_los_de_la_aeat
+    raiz = Nokogiri::XML(envio([[alta, nil]])).root
+
+    assert_equal VerifactuRails::NS_LR, raiz.namespace.href
+    assert_equal 'sum', raiz.namespace.prefix
+    assert_equal({ 'xmlns:sum' => VerifactuRails::NS_LR,
+                   'xmlns:sum1' => VerifactuRails::NS_SF }, raiz.namespaces)
+  end
+
   # --- el bug número uno del dominio ----------------------------------------
 
   # Reproduce lo que hace la AEAT: recalcula la huella SOBRE LOS VALORES DEL XML

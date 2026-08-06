@@ -13,6 +13,13 @@ module VerifactuRails
   # Espacios de nombres. Son URLs de www2 aunque los XSD se descarguen de
   # prewww2: el targetNamespace de los esquemas apunta a producción en ambos
   # entornos, y es el targetNamespace lo que manda.
+  #
+  # Los prefijos que se emiten son "sum" y "sum1", los mismos que usa la AEAT en
+  # sus ejemplos de petición y los mismos que usa mybooking-es/verifactu-rb. Para
+  # un parser XML el prefijo es irrelevante —lo que liga es el URI—, pero
+  # coincidir permite comparar nuestra salida con los ejemplos oficiales línea a
+  # línea cuando algo se rechaza, que es justo cuando menos ganas hay de traducir
+  # prefijos mentalmente.
   NS_SF = 'https://www2.agenciatributaria.gob.es/static_files/common/internet/' \
           'dep/aplicaciones/es/aeat/tike/cont/ws/SuministroInformacion.xsd'
   NS_LR = 'https://www2.agenciatributaria.gob.es/static_files/common/internet/' \
@@ -214,38 +221,38 @@ module VerifactuRails
     def construir(xml, anterior: nil)
       propia = huella(anterior: anterior)
 
-      xml['sf'].RegistroAlta do
-        xml['sf'].IDVersion IDVERSION
-        xml['sf'].IDFactura do
-          xml['sf'].IDEmisorFactura id_emisor
-          xml['sf'].NumSerieFactura num_serie
-          xml['sf'].FechaExpedicionFactura fecha_expedicion
+      xml['sum1'].RegistroAlta do
+        xml['sum1'].IDVersion IDVERSION
+        xml['sum1'].IDFactura do
+          xml['sum1'].IDEmisorFactura id_emisor
+          xml['sum1'].NumSerieFactura num_serie
+          xml['sum1'].FechaExpedicionFactura fecha_expedicion
         end
-        xml['sf'].NombreRazonEmisor nombre_razon_emisor
-        xml['sf'].Subsanacion subsanacion if subsanacion
-        xml['sf'].RechazoPrevio rechazo_previo if rechazo_previo
-        xml['sf'].TipoFactura tipo_factura
-        xml['sf'].TipoRectificativa tipo_rectificativa if tipo_rectificativa
+        xml['sum1'].NombreRazonEmisor nombre_razon_emisor
+        xml['sum1'].Subsanacion subsanacion if subsanacion
+        xml['sum1'].RechazoPrevio rechazo_previo if rechazo_previo
+        xml['sum1'].TipoFactura tipo_factura
+        xml['sum1'].TipoRectificativa tipo_rectificativa if tipo_rectificativa
         construir_referenciadas(xml, 'FacturasRectificadas', 'IDFacturaRectificada',
                                 facturas_rectificadas)
         construir_referenciadas(xml, 'FacturasSustituidas', 'IDFacturaSustituida',
                                 facturas_sustituidas)
         if importe_rectificacion
-          xml['sf'].ImporteRectificacion do
-            importe_rectificacion.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }
+          xml['sum1'].ImporteRectificacion do
+            importe_rectificacion.a_pares.each { |campo, valor| xml['sum1'].send(campo, valor) }
           end
         end
-        xml['sf'].FechaOperacion fecha_operacion if fecha_operacion
-        xml['sf'].DescripcionOperacion descripcion_operacion
+        xml['sum1'].FechaOperacion fecha_operacion if fecha_operacion
+        xml['sum1'].DescripcionOperacion descripcion_operacion
         construir_destinatarios(xml)
         construir_desglose(xml)
-        xml['sf'].CuotaTotal cuota_total
-        xml['sf'].ImporteTotal importe_total
+        xml['sum1'].CuotaTotal cuota_total
+        xml['sum1'].ImporteTotal importe_total
         construir_encadenamiento(xml, anterior)
         construir_sistema(xml)
-        xml['sf'].FechaHoraHusoGenRegistro fecha_hora_gen
-        xml['sf'].TipoHuella TIPO_HUELLA
-        xml['sf'].Huella propia
+        xml['sum1'].FechaHoraHusoGenRegistro fecha_hora_gen
+        xml['sum1'].TipoHuella TIPO_HUELLA
+        xml['sum1'].Huella propia
       end
     end
 
@@ -254,14 +261,14 @@ module VerifactuRails
     def construir_destinatarios(xml)
       return if destinatarios.empty?
 
-      xml['sf'].Destinatarios do
+      xml['sum1'].Destinatarios do
         destinatarios.each do |d|
-          xml['sf'].IDDestinatario do
-            xml['sf'].NombreRazon d.nombre_razon
+          xml['sum1'].IDDestinatario do
+            xml['sum1'].NombreRazon d.nombre_razon
             if d.nif
-              xml['sf'].NIF d.nif
+              xml['sum1'].NIF d.nif
             else
-              xml['sf'].IDOtro { d.id_otro.each { |k, v| xml['sf'].send(k, v) } }
+              xml['sum1'].IDOtro { d.id_otro.each { |k, v| xml['sum1'].send(k, v) } }
             end
           end
         end
@@ -269,40 +276,40 @@ module VerifactuRails
     end
 
     def construir_desglose(xml)
-      xml['sf'].Desglose do
+      xml['sum1'].Desglose do
         desglose.detalles.each do |detalle|
-          xml['sf'].DetalleDesglose do
-            detalle.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }
+          xml['sum1'].DetalleDesglose do
+            detalle.a_pares.each { |campo, valor| xml['sum1'].send(campo, valor) }
           end
         end
       end
     end
 
     def construir_encadenamiento(xml, anterior)
-      xml['sf'].Encadenamiento do
+      xml['sum1'].Encadenamiento do
         if anterior.nil?
-          xml['sf'].PrimerRegistro 'S'
+          xml['sum1'].PrimerRegistro 'S'
         else
-          xml['sf'].RegistroAnterior do
-            anterior.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }
+          xml['sum1'].RegistroAnterior do
+            anterior.a_pares.each { |campo, valor| xml['sum1'].send(campo, valor) }
           end
         end
       end
     end
 
     def construir_sistema(xml)
-      xml['sf'].SistemaInformatico do
-        sistema_informatico.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }
+      xml['sum1'].SistemaInformatico do
+        sistema_informatico.a_pares.each { |campo, valor| xml['sum1'].send(campo, valor) }
       end
     end
 
     def construir_referenciadas(xml, envoltorio, elemento, facturas)
       return if facturas.empty?
 
-      xml['sf'].send(envoltorio) do
+      xml['sum1'].send(envoltorio) do
         facturas.each do |factura|
-          xml['sf'].send(elemento) do
-            factura.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }
+          xml['sum1'].send(elemento) do
+            factura.a_pares.each { |campo, valor| xml['sum1'].send(campo, valor) }
           end
         end
       end
@@ -467,26 +474,26 @@ module VerifactuRails
     def construir(xml, anterior:)
       propia = huella(anterior: anterior)
 
-      xml['sf'].RegistroAnulacion do
-        xml['sf'].IDVersion IDVERSION
-        xml['sf'].IDFactura do
-          xml['sf'].IDEmisorFacturaAnulada id_emisor
-          xml['sf'].NumSerieFacturaAnulada num_serie
-          xml['sf'].FechaExpedicionFacturaAnulada fecha_expedicion
+      xml['sum1'].RegistroAnulacion do
+        xml['sum1'].IDVersion IDVERSION
+        xml['sum1'].IDFactura do
+          xml['sum1'].IDEmisorFacturaAnulada id_emisor
+          xml['sum1'].NumSerieFacturaAnulada num_serie
+          xml['sum1'].FechaExpedicionFacturaAnulada fecha_expedicion
         end
-        xml['sf'].SinRegistroPrevio sin_registro_previo if sin_registro_previo
-        xml['sf'].RechazoPrevio rechazo_previo if rechazo_previo
-        xml['sf'].Encadenamiento do
-          xml['sf'].RegistroAnterior do
-            anterior.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }
+        xml['sum1'].SinRegistroPrevio sin_registro_previo if sin_registro_previo
+        xml['sum1'].RechazoPrevio rechazo_previo if rechazo_previo
+        xml['sum1'].Encadenamiento do
+          xml['sum1'].RegistroAnterior do
+            anterior.a_pares.each { |campo, valor| xml['sum1'].send(campo, valor) }
           end
         end
-        xml['sf'].SistemaInformatico do
-          sistema_informatico.a_pares.each { |campo, valor| xml['sf'].send(campo, valor) }
+        xml['sum1'].SistemaInformatico do
+          sistema_informatico.a_pares.each { |campo, valor| xml['sum1'].send(campo, valor) }
         end
-        xml['sf'].FechaHoraHusoGenRegistro fecha_hora_gen
-        xml['sf'].TipoHuella TIPO_HUELLA
-        xml['sf'].Huella propia
+        xml['sum1'].FechaHoraHusoGenRegistro fecha_hora_gen
+        xml['sum1'].TipoHuella TIPO_HUELLA
+        xml['sum1'].Huella propia
       end
     end
   end

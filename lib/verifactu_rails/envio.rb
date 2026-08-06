@@ -37,11 +37,11 @@ module VerifactuRails
 
     def to_xml
       constructor = Nokogiri::XML::Builder.new(encoding: 'UTF-8') do |xml|
-        xml['sum'].RegFactuSistemaFacturacion('xmlns:sum' => NS_LR, 'xmlns:sf' => NS_SF) do
+        xml['sum'].RegFactuSistemaFacturacion('xmlns:sum' => NS_LR, 'xmlns:sum1' => NS_SF) do
           xml['sum'].Cabecera do
-            xml['sf'].ObligadoEmision do
-              xml['sf'].NombreRazon nombre_obligado
-              xml['sf'].NIF nif_obligado
+            xml['sum1'].ObligadoEmision do
+              xml['sum1'].NombreRazon nombre_obligado
+              xml['sum1'].NIF nif_obligado
             end
           end
           entradas.each do |registro, anterior|
