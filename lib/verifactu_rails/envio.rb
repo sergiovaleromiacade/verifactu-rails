@@ -3,6 +3,7 @@
 require 'nokogiri'
 require_relative 'formato'
 require_relative 'registro'
+require_relative 'error'
 
 module VerifactuRails
   # Documento RegFactuSistemaFacturacion: la cabecera con el obligado tributario
@@ -24,10 +25,10 @@ module VerifactuRails
       @nombre_obligado = Formato.limitar(nombre_obligado, 'NombreRazon del obligado', 120)
       @entradas = entradas
 
-      raise ArgumentError, 'El envío necesita al menos un registro' if entradas.empty?
+      raise ValidacionError, 'El envío necesita al menos un registro' if entradas.empty?
 
       if entradas.size > MAXIMO_REGISTROS
-        raise ArgumentError,
+        raise ValidacionError,
               "Un envío admite como mucho #{MAXIMO_REGISTROS} registros " \
               "(recibidos #{entradas.size}). Parte el lote."
       end
@@ -64,7 +65,7 @@ module VerifactuRails
       intrusos = entradas.map(&:first).map(&:id_emisor).uniq.reject { |n| n == nif_obligado }
       return if intrusos.empty?
 
-      raise ArgumentError,
+      raise ValidacionError,
             "Todos los registros deben emitirlos el obligado de la cabecera " \
             "(#{nif_obligado}). Ajenos: #{intrusos.join(', ')}"
     end

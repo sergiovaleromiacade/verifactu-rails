@@ -616,6 +616,87 @@ class XmlTest < Minitest::Test
     end
   end
 
+  # --- tope de las simplificadas y marcas del art. 61.d / 72-73 --------------
+
+  # Ap. 15.8: el tope se mide sobre la SUMA del desglose (base + cuota), no
+  # sobre ImporteTotal, y admite +10 € de margen.
+  def simplificada(base, **extra)
+    linea = Detalle.new(base_imponible: BigDecimal(base), calificacion: 'S1',
+                        tipo_impositivo: BigDecimal('0'),
+                        cuota_repercutida: BigDecimal('0'))
+    alta(tipo_factura: 'F2', destinatarios: [], desglose: [linea],
+         cuota_total: BigDecimal('0.00'), importe_total: BigDecimal(base), **extra)
+  end
+
+  def test_una_simplificada_no_puede_pasar_de_3000_euros
+    assert_instance_of RegistroAlta, simplificada('3000.00')
+    assert_instance_of RegistroAlta, simplificada('3010.00'), 'el margen de +10 € es de la AEAT'
+
+    error = assert_raises(ValidacionError) { simplificada('3010.01') }
+    assert_match(/no puede superar 3000/, error.message)
+  end
+
+  # El tope decae con acuerdo de facturación o con la marca del art. 61.d).
+  def test_el_tope_de_la_simplificada_decae_con_las_excepciones_de_la_aeat
+    assert_instance_of RegistroAlta, simplificada('9999.00', num_registro_acuerdo: 'ACU-1')
+    assert_instance_of RegistroAlta, simplificada('9999.00', sin_identif_destinatario: 'S')
+  end
+
+  # El tope mira el desglose, así que un ImporteTotal bajo no lo esquiva.
+  def test_el_tope_se_mide_sobre_el_desglose_y_no_sobre_el_importe_total
+    lineas = Array.new(2) do
+      Detalle.new(base_imponible: BigDecimal('2000.00'), calificacion: 'S1',
+                  tipo_impositivo: BigDecimal('0'), cuota_repercutida: BigDecimal('0'))
+    end
+    assert_raises(ValidacionError) do
+      alta(tipo_factura: 'F2', destinatarios: [], desglose: lineas,
+           cuota_total: BigDecimal('0.00'), importe_total: BigDecimal('10.00'))
+    end
+  end
+
+  # Ap. 3.1.3.10: obligatorio desde cien millones, en valor absoluto.
+  def test_macrodato_es_obligatorio_a_partir_de_cien_millones
+    grande = { cuota_total: BigDecimal('0.00'), importe_total: BigDecimal('100000000.00') }
+    error = assert_raises(ValidacionError) { alta(**grande) }
+    assert_match(/umbral de macrodato/, error.message)
+
+    assert_instance_of RegistroAlta, alta(**grande, macrodato: 'S')
+    # También en negativo: una rectificativa de cien millones lo es igual.
+    assert_instance_of RegistroAlta,
+                       alta(importe_total: BigDecimal('-100000000.00'),
+                            cuota_total: BigDecimal('0.00'), macrodato: 'S')
+  end
+
+  def test_macrodato_no_se_puede_declarar_por_debajo_del_umbral
+    error = assert_raises(ValidacionError) { alta(macrodato: 'S') }
+    assert_match(/exige un ImporteTotal/, error.message)
+  end
+
+  # Ap. 3.1.3.8 y 3.1.3.9: cada marca solo cabe en su familia.
+  def test_las_marcas_de_simplificada_solo_caben_en_sus_tipos
+    assert_raises(ValidacionError) { simplificada('100.00', simplificada_cualificada: 'S') }
+    assert_instance_of RegistroAlta, alta(simplificada_cualificada: 'S')
+
+    error = assert_raises(ValidacionError) { alta(sin_identif_destinatario: 'S') }
+    assert_match(/FacturaSinIdentifDestinatarioArt61d no cabe/, error.message)
+  end
+
+  def test_el_bloque_de_marcas_y_acuerdos_valida_contra_el_xsd
+    registro = simplificada('100.00', sin_identif_destinatario: 'S',
+                                      num_registro_acuerdo: 'ACU-1',
+                                      id_acuerdo_sistema: 'IDACU-1')
+    xml = envio([[registro, nil]])
+
+    assert_empty Esquema.errores(xml)
+    doc = Nokogiri::XML(xml)
+    nombres = doc.at_xpath('//sf:RegistroAlta', 'sf' => SF).element_children.map(&:name)
+    interes = %w[DescripcionOperacion FacturaSinIdentifDestinatarioArt61d Desglose
+                 FechaHoraHusoGenRegistro NumRegistroAcuerdoFacturacion
+                 IdAcuerdoSistemaInformatico TipoHuella]
+
+    assert_equal interes, nombres.select { |n| interes.include?(n) }
+  end
+
   # --- validaciones de negocio de la AEAT (Validaciones v1.2.2) --------------
 
   # Ap. 3.1.3.13. F2 y R5 son las simplificadas: no se identifica al destinatario.

@@ -3,9 +3,12 @@
 require 'net/http'
 require 'uri'
 require_relative 'certificado'
+require_relative 'error'
 
 module VerifactuRails
-  class TransporteError < StandardError; end
+  class TransporteError < StandardError
+    include Error
+  end
 
   # Cliente HTTP con autenticación mutua TLS contra el servicio VERI*FACTU.
   #
@@ -35,7 +38,7 @@ module VerifactuRails
     def initialize(certificado:, entorno: :pruebas, sello: nil, url: nil,
                    ca_file: nil, timeout: 30)
       unless %i[pruebas produccion].include?(entorno)
-        raise ArgumentError, "Entorno inválido: #{entorno.inspect} (usa :pruebas o :produccion)"
+        raise ValidacionError, "Entorno inválido: #{entorno.inspect} (usa :pruebas o :produccion)"
       end
 
       @certificado = certificado

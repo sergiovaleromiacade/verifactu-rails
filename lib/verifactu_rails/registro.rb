@@ -5,6 +5,7 @@ require_relative 'importe'
 require_relative 'huella'
 require_relative 'desglose'
 require_relative 'sistema_informatico'
+require_relative 'error'
 
 module VerifactuRails
   IDVERSION = '1.0'   # sf:VersionType solo admite este valor
@@ -38,7 +39,7 @@ module VerifactuRails
       @huella = Formato.limitar(huella, 'Huella anterior', 64)
 
       unless @huella.match?(Huella::PATRON_HUELLA)
-        raise ArgumentError,
+        raise ValidacionError,
               "La huella anterior debe ser SHA-256 hex en MAYÚSCULAS: #{@huella.inspect}"
       end
     end
@@ -98,7 +99,7 @@ module VerifactuRails
     #   { codigo_pais: 'FR', id_type: '02', id: 'FR12345678901' }
     def initialize(nombre_razon:, nif: nil, id_otro: nil)
       if nif.nil? == id_otro.nil?
-        raise ArgumentError,
+        raise ValidacionError,
               'Indica exactamente uno de nif: o id_otro: para el destinatario'
       end
 
@@ -147,12 +148,27 @@ module VerifactuRails
     # Entrada en vigor de la Orden HAC/1177/2024.
     FECHA_MINIMA = Date.new(2024, 10, 28)
 
+    # Ap. 15.8. Una factura simplificada (F2) no puede pasar de 3.000 €, sumando
+    # base y cuota de todas las líneas del desglose. El margen lo concede la
+    # propia AEAT.
+    MAXIMO_SIMPLIFICADA = BigDecimal('3000.00')
+    MARGEN_SIMPLIFICADA = BigDecimal('10.00')
+
+    # Ap. 3.1.3.10. Obligatorio a partir de cien millones, en valor absoluto.
+    UMBRAL_MACRODATO = BigDecimal('100000000.00')
+
+    # Ap. 3.1.3.8 y 3.1.3.9: cada marca solo cabe en unos tipos de factura.
+    TIPOS_SIMPLIFICADA_CUALIFICADA = %w[F1 F3 R1 R2 R3 R4].freeze
+    TIPOS_SIN_IDENTIF_DESTINATARIO = %w[F2 R5].freeze
+
     attr_reader :id_emisor, :num_serie, :fecha_expedicion, :nombre_razon_emisor,
                 :tipo_factura, :descripcion_operacion, :desglose, :cuota_total,
                 :importe_total, :sistema_informatico, :fecha_hora_gen,
                 :destinatarios, :fecha_operacion, :tipo_rectificativa,
                 :facturas_rectificadas, :facturas_sustituidas,
-                :importe_rectificacion, :subsanacion, :rechazo_previo
+                :importe_rectificacion, :subsanacion, :rechazo_previo,
+                :simplificada_cualificada, :sin_identif_destinatario, :macrodato,
+                :num_registro_acuerdo, :id_acuerdo_sistema
 
     # @param subsanacion ['S', 'N', true, false, nil] marca el alta como
     #   subsanación de un registro ya generado. Es el ÚNICO mecanismo para
@@ -164,7 +180,9 @@ module VerifactuRails
                    fecha_hora_gen:, destinatarios: [], fecha_operacion: nil,
                    tipo_rectificativa: nil, facturas_rectificadas: [],
                    facturas_sustituidas: [], importe_rectificacion: nil,
-                   subsanacion: nil, rechazo_previo: nil)
+                   subsanacion: nil, rechazo_previo: nil,
+                   simplificada_cualificada: nil, sin_identif_destinatario: nil,
+                   macrodato: nil, num_registro_acuerdo: nil, id_acuerdo_sistema: nil)
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFactura')
       @num_serie = Formato.num_serie(num_serie)
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
@@ -186,16 +204,27 @@ module VerifactuRails
       @subsanacion = Formato.si_no(subsanacion, 'Subsanacion')
       @rechazo_previo = rechazo_previo &&
                         Formato.enumerado(rechazo_previo, 'RechazoPrevio', RECHAZOS_PREVIOS)
+      @simplificada_cualificada = Formato.si_no(simplificada_cualificada, 'FacturaSimplificadaArt7273')
+      @sin_identif_destinatario = Formato.si_no(sin_identif_destinatario,
+                                                'FacturaSinIdentifDestinatarioArt61d')
+      @macrodato = Formato.si_no(macrodato, 'Macrodato')
+      @num_registro_acuerdo = num_registro_acuerdo &&
+                              Formato.limitar(num_registro_acuerdo, 'NumRegistroAcuerdoFacturacion', 15)
+      @id_acuerdo_sistema = id_acuerdo_sistema &&
+                            Formato.limitar(id_acuerdo_sistema, 'IdAcuerdoSistemaInformatico', 16)
 
       unless @sistema_informatico.is_a?(SistemaInformatico)
-        raise ArgumentError, 'sistema_informatico debe ser VerifactuRails::SistemaInformatico'
+        raise ValidacionError, 'sistema_informatico debe ser VerifactuRails::SistemaInformatico'
       end
       if @destinatarios.size > MAXIMO_REFERENCIADAS
-        raise ArgumentError, "Como mucho #{MAXIMO_REFERENCIADAS} destinatarios por registro"
+        raise ValidacionError, "Como mucho #{MAXIMO_REFERENCIADAS} destinatarios por registro"
       end
 
       validar_fecha_expedicion!(fecha_expedicion)
       validar_subsanacion!
+      validar_marcas!
+      validar_macrodato!
+      validar_limite_simplificada!
       validar_destinatarios!
       validar_rectificativa!
       validar_sustitutiva!
@@ -244,6 +273,11 @@ module VerifactuRails
         end
         xml['sum1'].FechaOperacion fecha_operacion if fecha_operacion
         xml['sum1'].DescripcionOperacion descripcion_operacion
+        xml['sum1'].FacturaSimplificadaArt7273 simplificada_cualificada if simplificada_cualificada
+        if sin_identif_destinatario
+          xml['sum1'].FacturaSinIdentifDestinatarioArt61d sin_identif_destinatario
+        end
+        xml['sum1'].Macrodato macrodato if macrodato
         construir_destinatarios(xml)
         construir_desglose(xml)
         xml['sum1'].CuotaTotal cuota_total
@@ -251,6 +285,8 @@ module VerifactuRails
         construir_encadenamiento(xml, anterior)
         construir_sistema(xml)
         xml['sum1'].FechaHoraHusoGenRegistro fecha_hora_gen
+        xml['sum1'].NumRegistroAcuerdoFacturacion num_registro_acuerdo if num_registro_acuerdo
+        xml['sum1'].IdAcuerdoSistemaInformatico id_acuerdo_sistema if id_acuerdo_sistema
         xml['sum1'].TipoHuella TIPO_HUELLA
         xml['sum1'].Huella propia
       end
@@ -321,14 +357,14 @@ module VerifactuRails
       fecha = original.is_a?(Date) ? original : Date.strptime(@fecha_expedicion, '%d-%m-%Y')
 
       if fecha < FECHA_MINIMA
-        raise ArgumentError,
+        raise ValidacionError,
               "FechaExpedicionFactura no puede ser anterior a " \
               "#{FECHA_MINIMA.strftime('%d-%m-%Y')}, entrada en vigor de VERI*FACTU: " \
               "#{@fecha_expedicion}"
       end
       return unless fecha > Date.today
 
-      raise ArgumentError,
+      raise ValidacionError,
             "FechaExpedicionFactura no puede ser futura: #{@fecha_expedicion}"
     end
 
@@ -339,19 +375,69 @@ module VerifactuRails
       return if rechazo_previo.nil? || rechazo_previo == 'N'
       return if subsanacion == 'S'
 
-      raise ArgumentError,
+      raise ValidacionError,
             "RechazoPrevio=#{rechazo_previo} exige subsanacion: 'S'. " \
             'Un rechazo previo solo se declara al subsanar el registro rechazado.'
     end
 
+    # Ap. 3.1.3.8 y 3.1.3.9: cada marca solo cabe en su familia de tipos.
+    def validar_marcas!
+      if simplificada_cualificada && !TIPOS_SIMPLIFICADA_CUALIFICADA.include?(tipo_factura)
+        raise ValidacionError,
+              "FacturaSimplificadaArt7273 no cabe con TipoFactura #{tipo_factura} " \
+              "(solo #{TIPOS_SIMPLIFICADA_CUALIFICADA.join(', ')})"
+      end
+      return unless sin_identif_destinatario && !TIPOS_SIN_IDENTIF_DESTINATARIO.include?(tipo_factura)
+
+      raise ValidacionError,
+            "FacturaSinIdentifDestinatarioArt61d no cabe con TipoFactura #{tipo_factura} " \
+            "(solo #{TIPOS_SIN_IDENTIF_DESTINATARIO.join(', ')})"
+    end
+
+    # Ap. 3.1.3.10. Se comprueba en valor absoluto: una rectificativa negativa de
+    # cien millones es igual de macrodato que la factura que corrige.
+    def validar_macrodato!
+      supera = BigDecimal(importe_total).abs >= UMBRAL_MACRODATO
+      return if supera == (macrodato == 'S')
+
+      if supera
+        raise ValidacionError,
+              "ImporteTotal #{importe_total} alcanza el umbral de macrodato: " \
+              "exige macrodato: 'S'"
+      end
+
+      raise ValidacionError,
+            "macrodato: 'S' exige un ImporteTotal de al menos " \
+            "#{UMBRAL_MACRODATO.to_s('F')} en valor absoluto (#{importe_total})"
+    end
+
+    # Ap. 15.8. El tope de las simplificadas se mide sobre el desglose, no sobre
+    # ImporteTotal, y decae si hay acuerdo de facturación o si la factura se
+    # acoge al art. 6.1.d) del RD 1619/2012.
+    def validar_limite_simplificada!
+      return unless tipo_factura == 'F2'
+      return if num_registro_acuerdo || sin_identif_destinatario == 'S'
+
+      suma = desglose.detalles.sum do |d|
+        BigDecimal(d.base_imponible) + BigDecimal(d.cuota_repercutida || '0')
+      end
+      return if suma <= MAXIMO_SIMPLIFICADA + MARGEN_SIMPLIFICADA
+
+      raise ValidacionError,
+            "Una factura simplificada (F2) no puede superar #{MAXIMO_SIMPLIFICADA.to_s('F')} " \
+            "sumando base y cuota del desglose (suma: #{Importe.formatear(suma)}). " \
+            'Si hay acuerdo de facturación indica num_registro_acuerdo:, y si se ' \
+            "acoge al art. 6.1.d) indica sin_identif_destinatario: 'S'."
+    end
+
     def validar_destinatarios!
       if TIPOS_CON_DESTINATARIO.include?(tipo_factura) && destinatarios.empty?
-        raise ArgumentError,
+        raise ValidacionError,
               "TipoFactura #{tipo_factura} exige al menos un destinatario"
       end
       return unless TIPOS_SIN_DESTINATARIO.include?(tipo_factura) && !destinatarios.empty?
 
-      raise ArgumentError,
+      raise ValidacionError,
             "TipoFactura #{tipo_factura} es simplificada y no admite destinatarios"
     end
 
@@ -361,7 +447,7 @@ module VerifactuRails
     def validar_rectificativa!
       if rectificativa?
         if tipo_rectificativa.nil?
-          raise ArgumentError,
+          raise ValidacionError,
                 "TipoFactura #{tipo_factura} es rectificativa y exige " \
                 "tipo_rectificativa: 'S' (sustitutiva) o 'I' (incremental)"
         end
@@ -370,7 +456,7 @@ module VerifactuRails
         # TipoFactura es R1-R5" (Validaciones v1.2.2, ap. 3.1.3.4).
       else
         unless tipo_rectificativa.nil? && facturas_rectificadas.empty?
-          raise ArgumentError,
+          raise ValidacionError,
                 "TipoFactura #{tipo_factura} no es rectificativa: no admite " \
                 'tipo_rectificativa ni facturas_rectificadas (usa R1-R5)'
         end
@@ -391,14 +477,14 @@ module VerifactuRails
       if tipo_rectificativa == 'S'
         return unless importe_rectificacion.nil?
 
-        raise ArgumentError,
+        raise ValidacionError,
               'Una rectificativa por sustitución exige importe_rectificacion ' \
               'con la base y la cuota que se sustituyen'
       end
 
       return if importe_rectificacion.nil?
 
-      raise ArgumentError,
+      raise ValidacionError,
             if tipo_rectificativa == 'I'
               'Una rectificativa incremental no lleva importe_rectificacion: ' \
               'sus propios importes ya son la diferencia'
@@ -413,7 +499,7 @@ module VerifactuRails
     # ap. 3.1.3.5).
     def validar_sustitutiva!
       if tipo_factura != 'F3' && !facturas_sustituidas.empty?
-        raise ArgumentError,
+        raise ValidacionError,
               "TipoFactura #{tipo_factura} no admite facturas_sustituidas (usa F3)"
       end
 
@@ -423,7 +509,7 @@ module VerifactuRails
     def validar_limite(facturas, campo)
       return if facturas.size <= MAXIMO_REFERENCIADAS
 
-      raise ArgumentError,
+      raise ValidacionError,
             "#{campo} admite como mucho #{MAXIMO_REFERENCIADAS} facturas " \
             "(recibidas #{facturas.size})"
     end
@@ -456,7 +542,7 @@ module VerifactuRails
                         Formato.enumerado(rechazo_previo, 'RechazoPrevio', RECHAZOS_PREVIOS)
 
       unless @sistema_informatico.is_a?(SistemaInformatico)
-        raise ArgumentError, 'sistema_informatico debe ser VerifactuRails::SistemaInformatico'
+        raise ValidacionError, 'sistema_informatico debe ser VerifactuRails::SistemaInformatico'
       end
     end
 

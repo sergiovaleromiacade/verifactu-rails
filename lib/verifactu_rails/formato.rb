@@ -2,6 +2,7 @@
 
 require 'time'
 require 'date'
+require_relative 'error'
 
 module VerifactuRails
   # Normalización canónica de los valores que aparecen a la vez en la cadena de la
@@ -31,10 +32,10 @@ module VerifactuRails
     # la propia AEAT).
     def texto(valor, campo)
       cadena = valor.to_s
-      raise ArgumentError, "#{campo} no puede estar vacío" if cadena.empty?
+      raise ValidacionError, "#{campo} no puede estar vacío" if cadena.empty?
 
       if cadena != cadena.strip
-        raise ArgumentError,
+        raise ValidacionError,
               "#{campo} contiene espacios al inicio o final: #{cadena.inspect}. " \
               'Normalízalo antes de generar el registro.'
       end
@@ -46,7 +47,7 @@ module VerifactuRails
       objeto = valor.is_a?(String) ? Date.strptime(valor, '%d-%m-%Y') : valor
       objeto.strftime('%d-%m-%Y')
     rescue ArgumentError, TypeError
-      raise ArgumentError, "Fecha inválida (se espera Date o 'dd-mm-yyyy'): #{valor.inspect}"
+      raise ValidacionError, "Fecha inválida (se espera Date o 'dd-mm-yyyy'): #{valor.inspect}"
     end
 
     # ISO 8601 con offset explícito. OJO: Ruby serializa UTC como "Z" mientras
@@ -54,11 +55,11 @@ module VerifactuRails
     # coincida con la de otras implementaciones y con el XML.
     def marca_temporal(valor)
       tiempo = valor.is_a?(String) ? Time.iso8601(valor) : valor
-      raise ArgumentError, 'fecha_hora_gen debe ser Time o String ISO 8601' unless tiempo.respond_to?(:strftime)
+      raise ValidacionError, 'fecha_hora_gen debe ser Time o String ISO 8601' unless tiempo.respond_to?(:strftime)
 
       tiempo.strftime('%Y-%m-%dT%H:%M:%S%:z')
     rescue ArgumentError => e
-      raise ArgumentError, "fecha_hora_gen inválida: #{valor.inspect} (#{e.message})"
+      raise ValidacionError, "fecha_hora_gen inválida: #{valor.inspect} (#{e.message})"
     end
 
     # Longitud fija de 9 según sf:NIFType. El XSD no valida el dígito de control,
@@ -67,7 +68,7 @@ module VerifactuRails
     def nif(valor, campo = 'NIF')
       cadena = texto(valor, campo)
       unless cadena.length == 9
-        raise ArgumentError, "#{campo} debe tener 9 caracteres: #{cadena.inspect}"
+        raise ValidacionError, "#{campo} debe tener 9 caracteres: #{cadena.inspect}"
       end
 
       cadena
@@ -86,14 +87,14 @@ module VerifactuRails
 
       malos = cadena.chars.reject { |c| c.ord.between?(32, 126) }.uniq
       unless malos.empty?
-        raise ArgumentError,
+        raise ValidacionError,
               "#{campo} solo admite ASCII imprimible (32-126); sobran: " \
               "#{malos.map(&:inspect).join(', ')}"
       end
 
       encontrados = PROHIBIDOS_SERIE.select { |c| cadena.include?(c) }
       unless encontrados.empty?
-        raise ArgumentError,
+        raise ValidacionError,
               "#{campo} no admite los caracteres #{encontrados.map(&:inspect).join(', ')}: " \
               "#{cadena.inspect}"
       end
@@ -104,7 +105,7 @@ module VerifactuRails
     def limitar(valor, campo, maximo)
       cadena = texto(valor, campo)
       if cadena.length > maximo
-        raise ArgumentError,
+        raise ValidacionError,
               "#{campo} excede #{maximo} caracteres (#{cadena.length}): #{cadena.inspect}"
       end
 
@@ -123,7 +124,7 @@ module VerifactuRails
       when true, 'S' then 'S'
       when false, 'N' then 'N'
       else
-        raise ArgumentError,
+        raise ValidacionError,
               "#{campo} debe ser true/false o 'S'/'N' (recibido: #{valor.inspect})"
       end
     end
@@ -131,7 +132,7 @@ module VerifactuRails
     def enumerado(valor, campo, admitidos)
       cadena = texto(valor, campo)
       unless admitidos.include?(cadena)
-        raise ArgumentError,
+        raise ValidacionError,
               "#{campo} inválido: #{cadena.inspect}. Admitidos: #{admitidos.join(', ')}"
       end
 

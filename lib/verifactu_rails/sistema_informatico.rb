@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'formato'
+require_relative 'error'
 
 module VerifactuRails
   # Identificación del sistema informático de facturación, obligatoria en CADA
@@ -40,7 +41,7 @@ module VerifactuRails
       @multiples_ot = Formato.si_no(multiples_ot, 'IndicadorMultiplesOT') == 'S'
 
       if @multiples_ot && !@multi_ot
-        raise ArgumentError,
+        raise ValidacionError,
               'IndicadorMultiplesOT no puede ser cierto si TipoUsoPosibleMultiOT ' \
               'es falso: no puedes estar usándolo para varios obligados si el ' \
               'sistema declara que no lo admite'

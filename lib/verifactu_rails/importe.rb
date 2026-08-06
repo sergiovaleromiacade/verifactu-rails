@@ -2,6 +2,7 @@
 
 require 'bigdecimal'
 require 'bigdecimal/util'
+require_relative 'error'
 
 module VerifactuRails
   # Formateo canónico de importes monetarios.
@@ -21,16 +22,16 @@ module VerifactuRails
     def formatear(valor)
       case valor
       when Float
-        raise ArgumentError,
+        raise ValidacionError,
               'No se admiten Float en importes: usa BigDecimal, Integer o String ' \
               "(recibido: #{valor.inspect})"
       when BigDecimal then decimal = valor
       when Integer    then decimal = valor.to_d
       when Rational   then decimal = valor.to_d(20)
       when String     then decimal = parsear_string(valor)
-      when nil        then raise ArgumentError, 'Importe requerido'
+      when nil        then raise ValidacionError, 'Importe requerido'
       else
-        raise ArgumentError, "Tipo de importe no admitido: #{valor.class}"
+        raise ValidacionError, "Tipo de importe no admitido: #{valor.class}"
       end
 
       # ROUND_HALF_UP: el redondeo bancario (HALF_EVEN) de Ruby por defecto
@@ -39,7 +40,7 @@ module VerifactuRails
       resultado = format('%.2f', resultado.to_d) # asegura los 2 decimales
 
       unless resultado.match?(PATRON)
-        raise ArgumentError, "Importe fuera de rango o mal formado: #{resultado}"
+        raise ValidacionError, "Importe fuera de rango o mal formado: #{resultado}"
       end
 
       # -0.00 no existe fiscalmente y rompería la comparación de huellas
@@ -49,7 +50,7 @@ module VerifactuRails
     def parsear_string(cadena)
       texto = cadena.strip
       unless texto.match?(/\A-?\d+([.,]\d+)?\z/)
-        raise ArgumentError, "Importe no numérico: #{cadena.inspect}"
+        raise ValidacionError, "Importe no numérico: #{cadena.inspect}"
       end
 
       texto.tr(',', '.').to_d

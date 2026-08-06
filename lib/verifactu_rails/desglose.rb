@@ -2,6 +2,7 @@
 
 require_relative 'formato'
 require_relative 'importe'
+require_relative 'error'
 
 module VerifactuRails
   # Una línea del desglose de la factura (sf:DetalleType).
@@ -25,7 +26,7 @@ module VerifactuRails
                    impuesto: '01', clave_regimen: '01',
                    tipo_recargo: nil, cuota_recargo: nil)
       if calificacion.nil? == exenta.nil?
-        raise ArgumentError,
+        raise ValidacionError,
               'Indica exactamente una de calificacion: o exenta: ' \
               '(el esquema las modela como choice, no caben las dos ni ninguna)'
       end
@@ -67,11 +68,11 @@ module VerifactuRails
 
     def validar_coherencia!
       if exenta? && cuota_repercutida
-        raise ArgumentError,
+        raise ValidacionError,
               'Una operación exenta no puede llevar CuotaRepercutida'
       end
       if cuota_recargo && tipo_recargo.nil?
-        raise ArgumentError,
+        raise ValidacionError,
               'CuotaRecargoEquivalencia exige TipoRecargoEquivalencia'
       end
     end
@@ -86,16 +87,16 @@ module VerifactuRails
     def initialize(detalles)
       @detalles = Array(detalles)
 
-      raise ArgumentError, 'El desglose necesita al menos una línea' if @detalles.empty?
+      raise ValidacionError, 'El desglose necesita al menos una línea' if @detalles.empty?
 
       if @detalles.size > MAXIMO_LINEAS
-        raise ArgumentError,
+        raise ValidacionError,
               "El desglose admite como mucho #{MAXIMO_LINEAS} líneas " \
               "(recibidas #{@detalles.size}). Agrupa por tipo impositivo."
       end
 
       unless @detalles.all?(Detalle)
-        raise ArgumentError, 'Todas las líneas deben ser VerifactuRails::Detalle'
+        raise ValidacionError, 'Todas las líneas deben ser VerifactuRails::Detalle'
       end
     end
 

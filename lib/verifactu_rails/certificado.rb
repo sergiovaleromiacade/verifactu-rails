@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
 require 'openssl'
+require_relative 'error'
 
 module VerifactuRails
-  class CertificadoError < StandardError; end
+  class CertificadoError < StandardError
+    include Error
+  end
 
   # Envuelve el certificado del obligado tributario usado para la autenticación
   # mutua TLS contra la AEAT.

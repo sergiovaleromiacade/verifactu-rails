@@ -3,6 +3,7 @@
 require 'digest'
 require_relative 'importe'
 require_relative 'formato'
+require_relative 'error'
 
 module VerifactuRails
   # Cálculo de la huella (hash) de los registros de facturación.
@@ -66,7 +67,7 @@ module VerifactuRails
     def cadena_anulacion(id_emisor:, num_serie:, fecha_expedicion:,
                          fecha_hora_gen:, huella_anterior:)
       if huella_anterior.nil? || huella_anterior.to_s.empty?
-        raise ArgumentError,
+        raise ValidacionError,
               'Un registro de anulación exige huella_anterior: no puede iniciar cadena'
       end
 
@@ -117,7 +118,7 @@ module VerifactuRails
 
       cadena = valor.to_s
       unless cadena.match?(PATRON_HUELLA)
-        raise ArgumentError,
+        raise ValidacionError,
               "huella_anterior debe ser SHA-256 hex en MAYÚSCULAS (64 chars): #{cadena.inspect}"
       end
       cadena
