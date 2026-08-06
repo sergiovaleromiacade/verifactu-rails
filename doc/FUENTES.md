@@ -295,6 +295,49 @@ se implementaron leyendo el ap. 15 de Validaciones:
 | 1232-1234 | Reglas cruzadas de IDType y CodigoPais | `Destinatario#normalizar_id_otro` |
 | 1235-1236 | Ventanas temporales de TipoImpositivo | **pendiente** |
 
+## Cadenas, instalaciones y facturación desde varias fuentes
+
+La cadena es **una por SIF + NIF obligado**, no una por serie (ver arriba). Pero
+"SIF" no es el producto: lo identifica el bloque `SistemaInformatico` completo, y
+dentro de él el `NumeroInstalacion` es lo que distingue instalaciones.
+
+Las FAQs de desarrolladores (v1.3, 04-12-2025) lo resuelven explícitamente:
+
+> si se utiliza un SIF que permite llevar distintas facturaciones (...) cada una
+> de esas facturaciones distintas (sean de distintos OEF o del mismo OEF pero de
+> distintos centros de facturación independientes, como tiendas) debe tener un
+> nº de instalación propio y distinto al resto (pasado, presente o futuro)
+> **porque se consideran SIF independientes, como si fueran "SIF virtuales"**
+
+**Consecuencia de diseño.** Si las facturas entran desde varias fuentes (tiendas,
+TPV, web, un job de fondo), hay dos arquitecturas válidas:
+
+1. **Un solo SIF**: una cadena, y hace falta serializar TODAS las fuentes contra
+   ella con un lock de base de datos. Es la opción que obliga a coordinación
+   distribuida.
+2. **Un SIF virtual por fuente**, cada uno con su `NumeroInstalacion`: cadenas
+   independientes, sin lock entre fuentes. Es la vía que la AEAT contempla
+   expresamente y la que evita el problema de raíz.
+
+El `NumeroInstalacion` **no puede repetirse nunca**, ni siquiera al reinstalar
+sobre la misma máquina. Las FAQs recomiendan un timestamp de instalación o un
+secuencial propio del obligado.
+
+`IndicadorMultiplesOT` va a "S" cuando un SIF en la nube atiende a varios
+obligados a la vez.
+
+### De dónde sale la huella anterior
+
+**No la da la AEAT.** Hay que guardarla: cada registro almacena su propia huella,
+y el siguiente lee la última de su cadena bajo un lock. La AEAT no valida de forma
+síncrona que el `RegistroAnterior` sea realmente el último anotado, así que un
+error de coordinación no se detecta al enviar: la integridad de la cadena es
+responsabilidad de quien la construye.
+
+Para reconstruir el estado tras un desastre existe el servicio de **consulta**
+(`ConsultaLR.xsd`, versionado pero sin implementar). No sirve para el camino
+caliente: hay control de flujo entre envíos y el portal desaconseja el uso masivo.
+
 ## Ejemplos de registro
 
 `ejemploRegistro.xml` y `ejemploRegistro-firmado-epes-xades4j.xml` (fuera del
