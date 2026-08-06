@@ -502,12 +502,30 @@ class XmlTest < Minitest::Test
     refute_includes xml, 'RechazoPrevio'
   end
 
+  # Validar contra el XSD no basta: omitir un elemento OPCIONAL sigue siendo
+  # válido, así que hay que comprobar además que se emite y con qué valor.
   def test_las_operativas_de_anulacion_validan_contra_el_xsd
     [[nil, nil], ['N', 'N'], ['S', nil], [nil, 'S'], ['S', 'S']].each do |sin_previo, rechazo|
       baja = anulacion(sin_registro_previo: sin_previo, rechazo_previo: rechazo)
-      assert_empty Esquema.errores(envio([[baja, anterior]])),
-                   "SinRegistroPrevio=#{sin_previo.inspect} RechazoPrevio=#{rechazo.inspect}"
+      xml = envio([[baja, anterior]])
+      etiqueta = "SinRegistroPrevio=#{sin_previo.inspect} RechazoPrevio=#{rechazo.inspect}"
+
+      assert_empty Esquema.errores(xml), etiqueta
+      doc = Nokogiri::XML(xml)
+
+      assert_equal sin_previo,
+                   doc.at_xpath('//sf:SinRegistroPrevio', 'sf' => SF)&.text, etiqueta
+      assert_equal rechazo,
+                   doc.at_xpath('//sf:RegistroAnulacion/sf:RechazoPrevio', 'sf' => SF)&.text, etiqueta
     end
+  end
+
+  def test_la_anulacion_emite_sus_campos_en_el_orden_de_la_sequence
+    doc = Nokogiri::XML(envio([[anulacion(sin_registro_previo: 'S', rechazo_previo: 'S'), anterior]]))
+    nombres = doc.at_xpath('//sf:RegistroAnulacion', 'sf' => SF).element_children.map(&:name)
+    interes = %w[IDFactura SinRegistroPrevio RechazoPrevio Encadenamiento]
+
+    assert_equal interes, nombres.select { |n| interes.include?(n) }
   end
 
   # En la anulación no existe la operativa "X": lo que en el alta se expresa con
