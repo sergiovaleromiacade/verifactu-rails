@@ -64,6 +64,26 @@ module VerifactuRails
       valores.include?('sello') || valores.include?('seal')
     end
 
+    # NIF del titular, tal como lo graba la FNMT en el sujeto.
+    #
+    # Sirve para una comprobación que ahorra viajes: la AEAT exige que el titular
+    # del certificado coincida con el ObligadoEmision, y si no coinciden responde
+    # un 4104 "no está identificado" que parece decir que el NIF no existe.
+    #
+    # Es una heurística sobre formatos observados (serialNumber "IDCES-xxxxxxxxX"
+    # o el NIF suelto, y CN terminado en "- xxxxxxxxX"), no un campo normalizado,
+    # así que devuelve nil si no lo reconoce en vez de inventarse nada.
+    PATRON_NIF = /\b([A-Z]?\d{7,8}[A-Z0-9])\b/
+
+    def nif
+      candidatos = [sujeto['serialNumber'], sujeto['CN']].compact
+      candidatos.each do |valor|
+        m = valor.upcase.sub(/\AIDCES-/, '').match(PATRON_NIF)
+        return m[1] if m && m[1].length == 9
+      end
+      nil
+    end
+
     def resumen
       { titular: sujeto['CN'], organizacion: sujeto['O'],
         caduca: certificado.not_after, dias_restantes: dias_para_caducar,

@@ -33,6 +33,17 @@ certificado = Certificado.desde_pkcs12(File.binread(env!('VF_P12')), env!('VF_PA
 puts "Certificado: #{certificado.resumen}"
 puts "  caduca en #{certificado.dias_para_caducar} días" if certificado.caduca_pronto?
 
+# La AEAT exige que el titular del certificado coincida con el ObligadoEmision.
+# Si no coinciden, responde un 4104 "no está identificado", que parece decir que
+# el NIF no existe cuando lo que pasa es que no es el del certificado.
+case certificado.nif
+when nil       then puts '  (no se pudo leer el NIF del certificado; sin comprobar)'
+when nif       then puts "  NIF del certificado: #{certificado.nif} (coincide con VF_NIF)"
+else
+  abort "  EL NIF NO COINCIDE: el certificado es de #{certificado.nif} y VF_NIF es #{nif}.\n" \
+        '  La AEAT devolvería un 4104. Usa el NIF del titular del certificado.'
+end
+
 # Estos valores describen TU sistema de facturación, no esta gema.
 sistema = SistemaInformatico.new(
   nombre_razon: ENV['VF_PRODUCTOR'] || nombre,

@@ -65,6 +65,30 @@ class CertificadoTest < Minitest::Test
     refute certificado.sello?
   end
 
+  # La FNMT graba el NIF en serialNumber (a veces con prefijo IDCES-) y también
+  # al final del CN. Leerlo permite avisar de que no coincide con el
+  # ObligadoEmision antes de gastar un viaje y recibir un 4104 confuso.
+  def test_extrae_el_nif_del_titular
+    casos = {
+      '/CN=CERTIFICADO UNO TELEMATICAS - 89890001K/serialNumber=IDCES-89890001K' => '89890001K',
+      '/CN=ACME SL/serialNumber=B12345674' => 'B12345674',
+      '/CN=JUAN PEREZ - 89890001K/O=ACME' => '89890001K'
+    }
+    casos.each do |subject, esperado|
+      cert, key = PKI.emitir(@ca_cert, @ca_key, subject: subject)
+      certificado = VerifactuRails::Certificado.desde_pkcs12(PKI.pkcs12(cert, key, 'x'), 'x')
+      assert_equal esperado, certificado.nif, subject
+    end
+  end
+
+  # Mejor nil que un valor inventado: quien llama decide si sigue sin comprobar.
+  def test_devuelve_nil_si_el_sujeto_no_lleva_nif
+    cert, key = PKI.emitir(@ca_cert, @ca_key, subject: '/CN=SIN IDENTIFICADOR/O=ACME')
+    certificado = VerifactuRails::Certificado.desde_pkcs12(PKI.pkcs12(cert, key, 'x'), 'x')
+
+    assert_nil certificado.nif
+  end
+
   def test_datos_vacios
     # Con solo comprobar la clase, este test pasaba aunque se borrara la guarda:
     # OpenSSL lanza PKCS12Error y el rescue lo convierte en el mismo
