@@ -58,17 +58,33 @@ sistema = SistemaInformatico.new(
   numero_instalacion: ENV['VF_INSTALACION'] || 'PRUEBA-1'
 )
 
+# La AEAT también valida el par NIF + NombreRazon del DESTINATARIO contra el
+# censo (error 1239), así que por defecto se usa el propio titular: es el único
+# par del que se sabe seguro que está censado. Para un destinatario real, pasa
+# VF_CLIENTE_NIF y VF_CLIENTE_NOMBRE con datos que existan de verdad.
+#
+# VF_TIPO=F2 emite una factura simplificada, que por definición NO lleva
+# destinatario: es la vía más corta para un primer envío que no dependa de
+# tener a un tercero censado.
+tipo = ENV['VF_TIPO'] || 'F1'
+destinatarios =
+  if tipo == 'F2'
+    []
+  else
+    [Destinatario.new(nombre_razon: ENV['VF_CLIENTE_NOMBRE'] || nombre,
+                      nif: ENV['VF_CLIENTE_NIF'] || nif)]
+  end
+
 registro = RegistroAlta.new(
   id_emisor: nif, num_serie: serie, fecha_expedicion: Date.today,
-  nombre_razon_emisor: nombre, tipo_factura: 'F1',
+  nombre_razon_emisor: nombre, tipo_factura: tipo,
   descripcion_operacion: 'Prueba de integracion VERI*FACTU',
   desglose: [Detalle.new(base_imponible: BigDecimal('100.00'), calificacion: 'S1',
                          tipo_impositivo: BigDecimal('21'),
                          cuota_repercutida: BigDecimal('21.00'))],
   cuota_total: BigDecimal('21.00'), importe_total: BigDecimal('121.00'),
   sistema_informatico: sistema, fecha_hora_gen: Time.now,
-  destinatarios: [Destinatario.new(nombre_razon: 'Cliente de Prueba SL',
-                                   nif: ENV['VF_CLIENTE_NIF'] || nif)]
+  destinatarios: destinatarios
 )
 
 # nil = primer registro de la cadena. En un sistema real, el anterior sale de la

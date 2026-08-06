@@ -244,6 +244,28 @@ la FNMT. Lo que confirman:
 - **Los fallos de servicio llegan como SOAP Fault**, no como
   `RespuestaSuministro`, con el código dentro de `faultstring` en el formato
   `Codigo[NNNN].descripción`. `Respuesta` lo extrae.
+- **La identificación del obligado es por el PAR NIF + NombreRazon.** Con el NIF
+  correcto y un nombre que no cuadre con el censo, la AEAT responde 4104 "el NIF
+  no está identificado", que apunta al campo equivocado. El detalle del error sí
+  devuelve los dos campos, y ahí está la pista. Lo mismo aplica al destinatario,
+  con el código 1239.
+- **`Respuesta` leyó correctamente una respuesta real**: `EstadoEnvio`,
+  `TiempoEsperaEnvio` y la línea con su código y descripción.
+- **`TiempoEsperaEnvio` devolvió 60**, el valor inicial que fija el art. 16.2 de
+  la Orden.
+
+### Códigos que confirman reglas deducidas del PDF
+
+Estos existen como error propio de la AEAT, lo que respalda las validaciones que
+se implementaron leyendo el ap. 15 de Validaciones:
+
+| Código | Regla | Dónde se implementa |
+|---|---|---|
+| 1237 | N1/N2 con IVA no admiten tipo, cuota ni recargo | `Detalle#validar_calificacion!` |
+| 1238 | Una exenta no admite esos cuatro campos | `Detalle#validar_exenta!` |
+| 1245 | ClaveRegimen obligatoria con IVA/IPSI/IGIC | `Detalle#validar_clave_regimen!` |
+| 1232-1234 | Reglas cruzadas de IDType y CodigoPais | `Destinatario#normalizar_id_otro` |
+| 1235-1236 | Ventanas temporales de TipoImpositivo | **pendiente** |
 
 ## Ejemplos de registro
 
