@@ -23,7 +23,10 @@ Gem::Specification.new do |spec|
 
   spec.files = Dir[
     'lib/**/*.rb',
+    # El catálogo va con los XSD: sin él no compilan (import remoto a xmldsig).
     'lib/verifactu_rails/schemas/*.xsd',
+    'lib/verifactu_rails/schemas/catalog.xml',
+    'lib/verifactu_rails/schemas/PROCEDENCIA.md',
     'LICENSE',
     'README.md'
   ]
