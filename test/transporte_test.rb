@@ -66,7 +66,15 @@ class CertificadoTest < Minitest::Test
   end
 
   def test_datos_vacios
-    assert_raises(VerifactuRails::CertificadoError) { VerifactuRails::Certificado.desde_pkcs12('', 'x') }
+    # Con solo comprobar la clase, este test pasaba aunque se borrara la guarda:
+    # OpenSSL lanza PKCS12Error y el rescue lo convierte en el mismo
+    # CertificadoError, pero con el mensaje engañoso de "contraseña incorrecta".
+    ['', nil].each do |vacio|
+      error = assert_raises(VerifactuRails::CertificadoError) do
+        VerifactuRails::Certificado.desde_pkcs12(vacio, 'x')
+      end
+      assert_match(/vacíos/, error.message, "#{vacio.inspect} debe dar el error de datos vacíos")
+    end
   end
 end
 

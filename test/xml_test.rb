@@ -92,8 +92,10 @@ class XmlTest < Minitest::Test
   # generador formateara un importe distinto de como lo formateó la huella, aquí
   # se ve. Se construye la cadena a mano, sin usar Huella, para que sea una
   # comprobación independiente y no una tautología.
-  def recalcular_como_la_aeat(doc)
-    reg = doc.at_xpath('//sf:RegistroAlta', 'sf' => SF)
+  # Acepta el documento (y toma el primer alta) o un nodo sf:RegistroAlta
+  # concreto, para poder recorrer un lote entero.
+  def recalcular_como_la_aeat(origen)
+    reg = origen.name == 'RegistroAlta' ? origen : origen.at_xpath('//sf:RegistroAlta', 'sf' => SF)
     campo = ->(nombre) { reg.at_xpath("sf:#{nombre}", 'sf' => SF)&.text.to_s }
     id = ->(nombre) { reg.at_xpath("sf:IDFactura/sf:#{nombre}", 'sf' => SF).text }
     previa = reg.at_xpath('sf:Encadenamiento/sf:RegistroAnterior/sf:Huella', 'sf' => SF)
@@ -117,6 +119,47 @@ class XmlTest < Minitest::Test
       assert_equal recalculada, declarada,
                    "La huella del XML no cuadra con sus propios valores (previa: #{previa.inspect})"
     end
+  end
+
+  # Un lote de verdad, encadenado. Existía un punto ciego serio: TODOS los demás
+  # tests envían un único registro, así que un Envio que emitiera solo el primero
+  # de la lista pasaba la suite entera. Con 500 facturas eso significa remitir una
+  # y perder 499 sin ningún error.
+  def test_un_lote_emite_todos_sus_registros_encadenados
+    primera = alta(num_serie: 'FA/2026/0001')
+    h1 = primera.huella(anterior: nil)
+
+    tras_primera = RegistroAnterior.new(id_emisor: 'B12345678', num_serie: 'FA/2026/0001',
+                                        fecha_expedicion: Date.new(2026, 8, 6), huella: h1)
+    segunda = alta(num_serie: 'FA/2026/0002')
+    h2 = segunda.huella(anterior: tras_primera)
+
+    tras_segunda = RegistroAnterior.new(id_emisor: 'B12345678', num_serie: 'FA/2026/0002',
+                                        fecha_expedicion: Date.new(2026, 8, 6), huella: h2)
+    tercera = alta(num_serie: 'FA/2026/0003')
+
+    xml = envio([[primera, nil], [segunda, tras_primera], [tercera, tras_segunda]])
+    doc = Nokogiri::XML(xml)
+
+    assert_empty Esquema.errores(xml)
+    assert_equal 3, doc.xpath('//sum:RegistroFactura', 'sum' => VerifactuRails::NS_LR).size
+    assert_equal %w[FA/2026/0001 FA/2026/0002 FA/2026/0003],
+                 doc.xpath('//sf:IDFactura/sf:NumSerieFactura', 'sf' => SF).map(&:text)
+
+    # Cada uno debe resistir el recálculo por separado.
+    doc.xpath('//sf:RegistroAlta', 'sf' => SF).each_with_index do |nodo, i|
+      recalculada, declarada = recalcular_como_la_aeat(nodo)
+      assert_equal recalculada, declarada, "el registro #{i + 1} del lote no cuadra"
+    end
+
+    # Y la cadena tiene que enlazar: la huella de cada uno es la 'anterior' del
+    # siguiente. Es lo que la AEAT verifica sobre el conjunto.
+    huellas = doc.xpath('//sf:RegistroAlta/sf:Huella', 'sf' => SF).map(&:text)
+    previas = doc.xpath('//sf:Encadenamiento/sf:RegistroAnterior/sf:Huella', 'sf' => SF).map(&:text)
+
+    assert_equal [h1, h2], huellas.first(2)
+    assert_equal huellas.first(2), previas
+    assert_equal 'S', doc.at_xpath('//sf:Encadenamiento/sf:PrimerRegistro', 'sf' => SF).text
   end
 
   # Importes con decimales que se prestan a divergir según quién los formatee.
@@ -271,10 +314,13 @@ class XmlTest < Minitest::Test
   # La AEAT dice literalmente que la agrupación "no es obligatoria" (Validaciones
   # v1.2.2, ap. 3.1.3.4). Exigirla sería más estricto que la norma.
   def test_una_rectificativa_no_esta_obligada_a_listar_las_rectificadas
-    registro = alta(tipo_factura: 'R1', tipo_rectificativa: 'I')
+    xml = envio([[alta(tipo_factura: 'R1', tipo_rectificativa: 'I'), nil]])
 
-    assert_empty registro.facturas_rectificadas
-    assert_empty Esquema.errores(envio([[registro, nil]]))
+    assert_empty Esquema.errores(xml)
+    # Lo que importa no es que la colección esté vacía, sino que el elemento
+    # opcional no llegue a emitirse: un <FacturasRectificadas/> sin hijos no
+    # cumple el esquema.
+    refute_includes xml, 'FacturasRectificadas'
   end
 
   def test_una_factura_normal_no_admite_campos_de_rectificacion
@@ -316,8 +362,13 @@ class XmlTest < Minitest::Test
 
   # Tampoco es obligatoria en F3, solo exclusiva de F3 (ap. 3.1.3.5).
   def test_las_facturas_sustituidas_son_exclusivas_de_f3_pero_no_obligatorias
-    assert_empty alta(tipo_factura: 'F3').facturas_sustituidas
-    assert_raises(ArgumentError) { alta(facturas_sustituidas: [rectificada]) }
+    xml = envio([[alta(tipo_factura: 'F3'), nil]])
+
+    assert_empty Esquema.errores(xml)
+    refute_includes xml, 'FacturasSustituidas'
+
+    error = assert_raises(ArgumentError) { alta(facturas_sustituidas: [rectificada]) }
+    assert_match(/no admite facturas_sustituidas/, error.message)
   end
 
   def test_rechaza_un_tipo_rectificativa_desconocido
@@ -423,27 +474,35 @@ class XmlTest < Minitest::Test
   # en el XML. Los que romperían el XML (< > ") los prohíbe la propia AEAT.
   def test_la_serie_rechaza_los_caracteres_que_prohibe_la_aeat
     ['A"1', "A'1", 'A<1', 'A>1', 'A=1'].each do |serie|
-      assert_raises(ArgumentError, "debería rechazar #{serie.inspect}") do
+      error = assert_raises(ArgumentError, "debería rechazar #{serie.inspect}") do
         alta(num_serie: serie)
       end
+      assert_match(/no admite los caracteres/, error.message, "por el motivo correcto: #{serie.inspect}")
     end
   end
 
   def test_la_serie_rechaza_lo_que_no_sea_ascii_imprimible
-    assert_raises(ArgumentError) { alta(num_serie: "FA\t1") }
-    assert_raises(ArgumentError) { alta(num_serie: 'FACTURACIÓN/1') }
+    ["FA\t1", 'FACTURACIÓN/1'].each do |serie|
+      error = assert_raises(ArgumentError) { alta(num_serie: serie) }
+      assert_match(/ASCII imprimible/, error.message)
+    end
   end
 
   def test_la_serie_admite_ampersand
     assert_equal 'FA&1', alta(num_serie: 'FA&1').num_serie
   end
 
-  # Ap. 3.1.3.1: no anterior a la entrada en vigor ni futura.
+  # Ap. 3.1.3.1: no anterior a la entrada en vigor ni futura. Se comprueba el
+  # MENSAJE de cada una: RegistroAlta tiene más de diez puntos que lanzan
+  # ArgumentError, así que sin esto el test podría pasar por la causa equivocada.
   def test_la_fecha_de_expedicion_respeta_los_limites_de_la_aeat
-    assert_raises(ArgumentError) { alta(fecha_expedicion: Date.new(2024, 10, 27)) }
-    assert_raises(ArgumentError) { alta(fecha_expedicion: Date.today + 1) }
+    anterior = assert_raises(ArgumentError) { alta(fecha_expedicion: Date.new(2024, 10, 27)) }
+    assert_match(/anterior a 28-10-2024/, anterior.message)
 
-    assert alta(fecha_expedicion: Date.new(2024, 10, 28))
+    futura = assert_raises(ArgumentError) { alta(fecha_expedicion: Date.today + 1) }
+    assert_match(/no puede ser futura/, futura.message)
+
+    assert_instance_of RegistroAlta, alta(fecha_expedicion: Date.new(2024, 10, 28))
   end
 
   # Ap. 3.1.3.1 y 3.1.4.1: comprobación cruzada entre cabecera y registros, que

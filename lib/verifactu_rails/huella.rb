@@ -30,8 +30,18 @@ module VerifactuRails
     #
     # @param huella_anterior [String, nil] huella del registro previo de la cadena.
     #   nil o "" únicamente para el primer registro del NIF+serie.
-    def alta(id_emisor:, num_serie:, fecha_expedicion:, tipo_factura:,
-             cuota_total:, importe_total:, fecha_hora_gen:, huella_anterior: nil)
+    def alta(**datos)
+      digerir(cadena_alta(**datos))
+    end
+
+    # Cadena exacta sobre la que se calcula la huella de un ALTA.
+    #
+    # Es pública a propósito y por dos motivos. Uno: cuando la AEAT rechaza por
+    # huella, lo primero que hay que comparar es ESTE string, no el digest. Dos:
+    # que los tests puedan afirmar sobre la cadena sin reconstruirla por su
+    # cuenta, que es como se quedan ciegos ante un cambio de normalizador.
+    def cadena_alta(id_emisor:, num_serie:, fecha_expedicion:, tipo_factura:,
+                    cuota_total:, importe_total:, fecha_hora_gen:, huella_anterior: nil)
       pares = {
         'IDEmisorFactura'          => texto(id_emisor, 'IDEmisorFactura'),
         'NumSerieFactura'          => texto(num_serie, 'NumSerieFactura'),
@@ -42,14 +52,19 @@ module VerifactuRails
         'Huella'                   => encadenamiento(huella_anterior),
         'FechaHoraHusoGenRegistro' => marca_temporal(fecha_hora_gen)
       }
-      digerir(serializar(pares, CAMPOS_ALTA))
+      serializar(pares, CAMPOS_ALTA)
     end
 
     # Huella de un registro de facturación de ANULACIÓN.
     # Aquí huella_anterior es SIEMPRE obligatoria: una anulación nunca puede ser
     # el primer registro de la cadena.
-    def anulacion(id_emisor:, num_serie:, fecha_expedicion:,
-                  fecha_hora_gen:, huella_anterior:)
+    def anulacion(**datos)
+      digerir(cadena_anulacion(**datos))
+    end
+
+    # Cadena exacta sobre la que se calcula la huella de una ANULACIÓN.
+    def cadena_anulacion(id_emisor:, num_serie:, fecha_expedicion:,
+                         fecha_hora_gen:, huella_anterior:)
       if huella_anterior.nil? || huella_anterior.to_s.empty?
         raise ArgumentError,
               'Un registro de anulación exige huella_anterior: no puede iniciar cadena'
@@ -62,7 +77,7 @@ module VerifactuRails
         'Huella'                        => encadenamiento(huella_anterior),
         'FechaHoraHusoGenRegistro'      => marca_temporal(fecha_hora_gen)
       }
-      digerir(serializar(pares, CAMPOS_ANULACION))
+      serializar(pares, CAMPOS_ANULACION)
     end
 
     # Expone la cadena previa al hash. Imprescindible para depurar: cuando la AEAT

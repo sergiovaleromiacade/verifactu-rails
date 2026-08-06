@@ -121,9 +121,28 @@ class HuellaTest < Minitest::Test
                     'FechaExpedicionFactura=03-01-2026'
   end
 
-  def test_utc_se_serializa_con_offset_no_con_z
-    cadena = cadena_alta(ALTA.merge(fecha_hora_gen: Time.new(2026, 8, 6, 10, 30, 15, '+00:00')))
-    assert_includes cadena, '+00:00'
+  # OJO con la entrada: Time.new(..., '+00:00') NO es un Time en UTC (utc? es
+  # false) y se serializa con offset aunque el código usara iso8601, así que con
+  # ese valor el test no podía fallar nunca. El caso peligroso de verdad es
+  # Time.utc, que es el único que Ruby serializa como "Z".
+  def test_un_time_utc_se_serializa_con_offset_no_con_z
+    utc = Time.utc(2026, 8, 6, 10, 30, 15)
+    assert_predicate utc, :utc?, 'la entrada debe ser UTC de verdad o el test no prueba nada'
+
+    assert_equal '2026-08-06T10:30:15+00:00',
+                 VerifactuRails::Formato.marca_temporal(utc)
+
+    cadena = cadena_alta(ALTA.merge(fecha_hora_gen: utc))
+    assert_includes cadena, 'FechaHoraHusoGenRegistro=2026-08-06T10:30:15+00:00'
+    refute_includes cadena, 'Z'
+  end
+
+  # Rails entrega ActiveSupport::TimeWithZone, cuyo iso8601 también rinde "Z" en
+  # UTC. No dependemos de activesupport, así que se imita lo esencial: un objeto
+  # que responde a strftime y está en UTC.
+  def test_un_time_convertido_a_utc_tampoco_lleva_z
+    cadena = cadena_alta(ALTA.merge(fecha_hora_gen: Time.new(2026, 8, 6, 12, 30, 15, '+02:00').utc))
+    assert_includes cadena, 'FechaHoraHusoGenRegistro=2026-08-06T10:30:15+00:00'
     refute_includes cadena, 'Z'
   end
 
@@ -181,17 +200,11 @@ class HuellaTest < Minitest::Test
 
   private
 
+  # Delega en lib/. Antes reconstruía la cadena con strftime propio, y eso dejaba
+  # ciegos a todos los tests que la usan: se podía cambiar Formato.fecha o
+  # Formato.marca_temporal y ninguno se enteraba, porque comparaban la
+  # reimplementación del test contra sí misma.
   def cadena_alta(attrs)
-    VerifactuRails::Huella.serializar(
-      { 'IDEmisorFactura' => attrs[:id_emisor],
-        'NumSerieFactura' => attrs[:num_serie],
-        'FechaExpedicionFactura' => attrs[:fecha_expedicion].strftime('%d-%m-%Y'),
-        'TipoFactura' => attrs[:tipo_factura],
-        'CuotaTotal' => VerifactuRails::Importe.formatear(attrs[:cuota_total]),
-        'ImporteTotal' => VerifactuRails::Importe.formatear(attrs[:importe_total]),
-        'Huella' => attrs[:huella_anterior].to_s,
-        'FechaHoraHusoGenRegistro' => attrs[:fecha_hora_gen].strftime('%Y-%m-%dT%H:%M:%S%:z') },
-      VerifactuRails::Huella::CAMPOS_ALTA
-    )
+    VerifactuRails::Huella.cadena_alta(**attrs)
   end
 end
