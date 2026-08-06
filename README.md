@@ -131,8 +131,11 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
   recortarlos, así que esto es *más estricto* que la norma: un valor con espacios
   al borde casi siempre es un defecto de los datos de origen y recortar en
   silencio lo taparía. Los espacios interiores sí se respetan.
-- **Nunca `VERIFY_NONE`.** Si falla la verificación TLS contra la AEAT, falta la
-  cadena de la CA en `ca_file`; desactivar la comprobación no es el arreglo.
+- **Nunca `VERIFY_NONE`.** Desde la renovación de noviembre de 2025 la AEAT sirve
+  con CA públicas (Entrust/Sectigo bajo USERTrust RSA), así que `ca_file` **no
+  hace falta**: los cinco endpoints validan con el almacén del sistema. Si aun así
+  falla, sospecha de un almacén anticuado o de un proxy que intercepte el TLS.
+  Desactivar la comprobación nunca es el arreglo.
 - **El encadenamiento es estrictamente serial.** Rails procesa en paralelo: hace
   falta un lock a nivel de base de datos por NIF+serie, no por factura.
 - **Los números de factura anulada no se reutilizan.** La AEAT responde "Registro

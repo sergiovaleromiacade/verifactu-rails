@@ -84,6 +84,55 @@ hay que **subsanarlo**. Entre ellos:
 Esto matiza la idea de que una huella mal calculada "se rechaza": no se rechaza,
 pero genera una obligación de subsanar.
 
+## Portal de pruebas externas (preproducción)
+
+Entorno abierto de la AEAT para probar presentación y consulta, sin trascendencia
+tributaria. La única condición es autenticarse con certificado electrónico.
+
+Los dominios se corresponden uno a uno con producción:
+
+| Preproducción | Producción | Uso |
+|---|---|---|
+| `prewww1.aeat.es` | `www1.agenciatributaria.gob.es` | Web services, certificado normal |
+| `prewww2.aeat.es` | `www2.agenciatributaria.gob.es` | Estáticos (de aquí salen los XSD) |
+| `prewww10.aeat.es` | `www10.agenciatributaria.gob.es` | Web services con **certificado de sello** |
+
+Esto confirma la tabla `ENDPOINTS` de `Transporte`, incluida la separación del
+endpoint de sello, que es el detalle menos documentado de todos.
+
+**Aviso operativo, del propio portal:** es para pruebas *puntuales*. Nada de
+pruebas masivas ni de validaciones integradas en procesos de producción; un uso
+que consideren abusivo puede acabar en bloqueo de acceso. Relevante aquí porque
+`Envio` admite lotes de 1000 registros: contra preproducción, moderación.
+
+### La cadena TLS ya no necesita `ca_file`
+
+El 21 de noviembre de 2025 la AEAT renovó los certificados de la sede electrónica
+y del dominio `*.aeat.es`. Comprobado el 06-08-2026 contra los cinco endpoints,
+todos validan con **`Verify return code: 0 (ok)`** usando el almacén de confianza
+del sistema:
+
+```
+prewww1/prewww10.aeat.es      *.aeat.es
+                              <- Entrust OV TLS Issuing RSA CA 2
+                              <- Sectigo Public Server Authentication Root R46
+                              <- USERTrust RSA Certification Authority
+
+www1/www2/www10.gob.es        agenciatributaria.gob.es (QWAC)
+                              <- Sectigo Qualified Website Authentication CA R35
+                              <- USERTrust RSA Certification Authority
+```
+
+Todas son CA públicas presentes en cualquier almacén estándar, así que **no hay
+que empaquetar raíces propias**. Esto invalida el punto "pendiente de verificar"
+número 3 del traspaso original ("la AEAT sirve con cadena propia"): era cierto
+antes de la renovación, ya no.
+
+`ca_file` sigue existiendo en `Transporte` por si hace falta anclar la cadena en
+un entorno concreto, pero deja de ser el arreglo por defecto ante un fallo de
+verificación. Ahí lo probable es un almacén de confianza anticuado o un proxy
+corporativo interceptando el TLS.
+
 ## Ejemplos de registro
 
 `ejemploRegistro.xml` y `ejemploRegistro-firmado-epes-xades4j.xml` (fuera del

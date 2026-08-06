@@ -12,6 +12,13 @@ module VerifactuRails
   # Sin Savon: el servicio es un único endpoint con un sobre SOAP fijo, así que
   # Net::HTTP de la stdlib sobra. Nos ahorra httpi, wasabi, gyoku, akami y nori.
   class Transporte
+    # Preproducción y producción se corresponden uno a uno: prewww1 <-> www1,
+    # prewww2 <-> www2, prewww10 <-> www10 (este último, el de certificado de
+    # sello). Fuente: portal de pruebas externas de la AEAT.
+    #
+    # Aviso operativo del propio portal: preproducción es para pruebas puntuales,
+    # NO para pruebas masivas ni para validaciones integradas en procesos de
+    # producción. Un uso que consideren abusivo puede acabar en bloqueo.
     ENDPOINTS = {
       [:pruebas, false]    => 'https://prewww1.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion/VerifactuSOAP',
       [:pruebas, true]     => 'https://prewww10.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion/VerifactuSOAP',
@@ -89,7 +96,11 @@ module VerifactuRails
     def mensaje_ssl(error)
       if error.message.include?('certificate verify failed')
         "Fallo al verificar el certificado de servidor de #{uri.host}. " \
-          'Aporta la cadena de la CA en ca_file. No uses VERIFY_NONE: ' \
+          'Desde la renovación de noviembre de 2025 la AEAT usa CA públicas ' \
+          '(Entrust/Sectigo bajo USERTrust RSA), así que la causa habitual NO es ' \
+          'que falte la cadena: mira si el almacén de confianza del sistema está ' \
+          'anticuado o si un proxy corporativo intercepta el TLS. Si aun así ' \
+          'necesitas anclar la cadena, pásala en ca_file. No uses VERIFY_NONE: ' \
           "(#{error.message})"
       else
         "Error TLS contra #{uri.host}: #{error.message}"
