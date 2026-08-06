@@ -34,7 +34,9 @@ Gem::Specification.new do |spec|
 
   spec.metadata['rubygems_mfa_required'] = 'true'
 
-  # Sin dependencias de runtime todavía, y es deliberado: no se declara una gema
-  # hasta que lib/ la usa de verdad. nokogiri llegará con el generador de XML y
-  # rqrcode con el QR de cotejo.
+  # Rango, no pin: fijar nokogiri a una versión exacta es justo lo que deja
+  # ininstalable a verifactu-rb en Rails moderno.
+  spec.add_dependency 'nokogiri', '~> 1.15'
+
+  # rqrcode entrará con el QR de cotejo. No se declara hasta que lib/ la use.
 end

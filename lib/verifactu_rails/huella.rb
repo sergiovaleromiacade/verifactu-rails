@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 
 require 'digest'
-require 'time'
-require 'date'
 require_relative 'importe'
+require_relative 'formato'
 
 module VerifactuRails
   # Cálculo de la huella (hash) de los registros de facturación.
@@ -77,28 +76,16 @@ module VerifactuRails
     end
 
     # --- normalizadores -------------------------------------------------------
+    #
+    # texto, fecha y marca_temporal viven en Formato porque el generador de XML
+    # necesita exactamente los mismos: si divergieran, la huella que calculamos
+    # dejaría de corresponder al XML que enviamos.
 
-    # Los espacios al principio/final son la ambigüedad clásica de la spec.
-    # En vez de decidir por el usuario (trim sí/no), rechazamos: que falle aquí
-    # y no seis meses después con una cadena rota en producción.
-    def texto(valor, campo)
-      cadena = valor.to_s
-      raise ArgumentError, "#{campo} no puede estar vacío" if cadena.empty?
+    def texto(valor, campo) = Formato.texto(valor, campo)
 
-      if cadena != cadena.strip
-        raise ArgumentError,
-              "#{campo} contiene espacios al inicio o final: #{cadena.inspect}. " \
-              'Normalízalo antes de generar el registro.'
-      end
-      cadena
-    end
+    def fecha(valor) = Formato.fecha(valor)
 
-    def fecha(valor)
-      objeto = valor.is_a?(String) ? Date.strptime(valor, '%d-%m-%Y') : valor
-      objeto.strftime('%d-%m-%Y')
-    rescue ArgumentError, TypeError
-      raise ArgumentError, "Fecha inválida (se espera Date o 'dd-mm-yyyy'): #{valor.inspect}"
-    end
+    def marca_temporal(valor) = Formato.marca_temporal(valor)
 
     def encadenamiento(valor)
       return '' if valor.nil? || valor.to_s.empty?
@@ -109,18 +96,6 @@ module VerifactuRails
               "huella_anterior debe ser SHA-256 hex en MAYÚSCULAS (64 chars): #{cadena.inspect}"
       end
       cadena
-    end
-
-    # ISO 8601 con offset explícito. OJO: Ruby serializa UTC como "Z" mientras
-    # que la referencia usa "+00:00"; forzamos siempre ±HH:MM para que la huella
-    # coincida con la de otras implementaciones y con el XML.
-    def marca_temporal(valor)
-      tiempo = valor.is_a?(String) ? Time.iso8601(valor) : valor
-      raise ArgumentError, 'fecha_hora_gen debe ser Time o String ISO 8601' unless tiempo.respond_to?(:strftime)
-
-      tiempo.strftime('%Y-%m-%dT%H:%M:%S%:z')
-    rescue ArgumentError => e
-      raise ArgumentError, "fecha_hora_gen inválida: #{valor.inspect} (#{e.message})"
     end
 
     private_class_method :texto, :fecha, :encadenamiento, :marca_temporal

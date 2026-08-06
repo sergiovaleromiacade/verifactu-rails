@@ -3,8 +3,13 @@
 # Punto de entrada de la gema. El nombre del fichero lleva guion (verifactu-rails)
 # para coincidir con el nombre de la gema; los internos van en verifactu_rails/.
 require_relative 'verifactu_rails/version'
+require_relative 'verifactu_rails/formato'
 require_relative 'verifactu_rails/importe'
 require_relative 'verifactu_rails/huella'
+require_relative 'verifactu_rails/desglose'
+require_relative 'verifactu_rails/sistema_informatico'
+require_relative 'verifactu_rails/registro'
+require_relative 'verifactu_rails/envio'
 require_relative 'verifactu_rails/certificado'
 require_relative 'verifactu_rails/transporte'
 

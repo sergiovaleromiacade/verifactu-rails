@@ -36,28 +36,51 @@ Fuera de alcance: Facturae/B2G, TicketBAI/Batuz, TPV.
 |---|---|
 | `VerifactuRails::Huella` | Serialización canónica y SHA-256 del registro (alta y anulación) |
 | `VerifactuRails::Importe` | Formateo de importes; el mismo string va en la huella y en el XML |
+| `VerifactuRails::Formato` | Fechas, marcas temporales y NIF, normalizados en un único sitio |
+| `VerifactuRails::Detalle` / `Desglose` | Líneas del desglose de IVA (máximo 12) |
+| `VerifactuRails::SistemaInformatico` | Identificación del SIF, obligatoria en cada registro |
+| `VerifactuRails::RegistroAlta` / `RegistroAnulacion` | El registro: calcula su huella y emite su XML |
+| `VerifactuRails::Envio` | Documento `RegFactuSistemaFacturacion` (lote de hasta 1000) |
 | `VerifactuRails::Certificado` | Carga de PKCS12, caducidad, detección de sello |
 | `VerifactuRails::Transporte` | Cliente HTTP con TLS mutuo contra el endpoint correcto |
 
-Pendiente: generador de XML, QR de cotejo, capa Rails (modelo append-only, job con
-lock por NIF+serie).
+Pendiente: facturas rectificativas, QR de cotejo, capa Rails (modelo append-only,
+job con lock por NIF+serie).
 
 ## Uso
 
 ```ruby
 require 'verifactu-rails'
+include VerifactuRails
 
-huella = VerifactuRails::Huella.alta(
-  id_emisor:        'B12345678',
-  num_serie:        'FA/2026/0001',
-  fecha_expedicion: Date.new(2026, 8, 6),
-  tipo_factura:     'F1',
-  cuota_total:      BigDecimal('21.00'),
-  importe_total:    BigDecimal('121.00'),
-  fecha_hora_gen:   Time.now,
-  huella_anterior:  nil   # nil solo en el primer registro de la cadena NIF+serie
+# Quien despliega el SIF se identifica; no es esta gema, es tu sistema.
+sistema = SistemaInformatico.new(
+  nombre_razon: 'Tu Empresa SL', nif: 'B12345678',
+  nombre_sistema: 'TuFactura', id_sistema: '01',
+  version: '1.0.0', numero_instalacion: 'INST-1'
 )
+
+registro = RegistroAlta.new(
+  id_emisor: 'B12345678', num_serie: 'FA/2026/0001',
+  fecha_expedicion: Date.new(2026, 8, 6), nombre_razon_emisor: 'Tu Empresa SL',
+  tipo_factura: 'F1', descripcion_operacion: 'Servicios de agosto',
+  desglose: [Detalle.new(base_imponible: BigDecimal('100.00'), calificacion: 'S1',
+                         tipo_impositivo: BigDecimal('21.00'),
+                         cuota_repercutida: BigDecimal('21.00'))],
+  cuota_total: BigDecimal('21.00'), importe_total: BigDecimal('121.00'),
+  sistema_informatico: sistema, fecha_hora_gen: Time.now,
+  destinatarios: [Destinatario.new(nombre_razon: 'Cliente SL', nif: 'B87654321')]
+)
+
+# `anterior` es nil solo en el primer registro de la cadena de ese NIF+serie.
+xml = Envio.new(nif_obligado: 'B12345678', nombre_obligado: 'Tu Empresa SL',
+                entradas: [[registro, anterior]]).to_xml
 ```
+
+El registro calcula su huella y monta su XML **a partir de los mismos campos ya
+normalizados**. Es deliberado: calcular la huella por un lado y montar el XML por
+otro es el error más caro del dominio, porque la AEAT recalcula la huella sobre el
+XML que recibe y rechaza el registro si difiere en un solo decimal.
 
 Cuando la AEAT rechace por huella, lo primero que hay que mirar no es el digest
 sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
@@ -82,8 +105,10 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 bundle exec rake test
 ```
 
-42 tests, ~1100 aserciones. Incluye verificación cruzada de la huella contra
-`josemmo/Verifactu-PHP` y `mybooking-es/verifactu-rb`.
+69 tests, ~1170 aserciones. Incluye verificación cruzada de la huella contra
+`josemmo/Verifactu-PHP` y `mybooking-es/verifactu-rb`, y validación del XML
+generado contra los XSD oficiales de la AEAT, versionados en
+[lib/verifactu_rails/schemas](lib/verifactu_rails/schemas/PROCEDENCIA.md).
 
 Los vectores oficiales de la AEAT todavía **no** están incorporados: hoy tenemos
 concordancia con dos implementaciones independientes, que no es lo mismo que la

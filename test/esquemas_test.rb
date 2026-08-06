@@ -9,15 +9,9 @@
 #      proyecto. Si la AEAT cambia alguna, queremos enterarnos aquí y no en
 #      producción.
 
-ESQUEMAS = File.expand_path('../lib/verifactu_rails/schemas', __dir__)
-
-# Antes de cargar nokogiri: libxml2 lee esta variable al inicializar el catálogo.
-# La pone el proceso de tests, nunca la librería (ver schemas/PROCEDENCIA.md).
-ENV['XML_CATALOG_FILES'] = File.join(ESQUEMAS, 'catalog.xml')
-
+require_relative 'support/esquema'
 require 'minitest/autorun'
 require 'digest'
-require 'nokogiri'
 
 class EsquemasTest < Minitest::Test
   # Descargados de prewww2.aeat.es el 06-08-2026.
@@ -59,9 +53,7 @@ class EsquemasTest < Minitest::Test
   # del documento, y sin ella libxml2 los busca en el directorio de trabajo.
   def test_los_esquemas_en_alcance_compilan_sin_red
     EN_ALCANCE.each do |fichero|
-      ruta = File.join(ESQUEMAS, fichero)
-      esquema = Nokogiri::XML::Schema.from_document(Nokogiri::XML(File.read(ruta), ruta))
-      assert_empty esquema.errors, "#{fichero} no compila"
+      assert_empty Esquema.compilar(fichero).errors, "#{fichero} no compila"
     rescue Nokogiri::XML::SyntaxError => e
       flunk "#{fichero} no compila: #{e.message}"
     end
