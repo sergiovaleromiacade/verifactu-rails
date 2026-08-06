@@ -52,6 +52,13 @@ Implementadas:
 Nótese que 3.1.3.4 y 3.1.3.5 **corrigieron** una implementación previa que las
 hacía obligatorias: era más estricta que la norma y bloqueaba casos válidos.
 
+Sobre 3.1.3.6: el commit que implementó las rectificativas (`ee25e53`) avisa de
+que esa regla estaba *deducida* y no leída en la tabla de validaciones. **Ese aviso
+ha quedado obsoleto**: se escribió antes de tener este PDF, y el apartado la
+recoge literalmente en sus dos direcciones ("Sólo deberá incluirse esta agrupación
+si el campo TipoRectificativa = 'S'" y "Obligatorio si TipoRectificativa = 'S'").
+No queda ninguna regla inferida en el código de rectificativas.
+
 Pendientes de implementar (no bloquean, pero convendría):
 
 - **Ap. 3.1.3.10 `Macrodato`**: obligatorio si `ImporteTotal >= |100.000.000,00|`.
