@@ -108,14 +108,27 @@ puts anterior ? "Encadenando tras #{anterior.num_serie}" : 'Primer registro de l
 xml = Envio.new(nif_obligado: nif, nombre_obligado: nombre,
                 entradas: [[registro, anterior]]).to_xml
 
-puts "\nHuella del registro: #{registro.huella(anterior: nil)}"
-puts "Cadena previa al hash (esto es lo que hay que comparar ante un rechazo):"
-puts "  #{Huella.cadena_alta(id_emisor: registro.id_emisor, num_serie: registro.num_serie,
-                             fecha_expedicion: registro.fecha_expedicion,
-                             tipo_factura: registro.tipo_factura,
-                             cuota_total: registro.cuota_total,
-                             importe_total: registro.importe_total,
-                             fecha_hora_gen: registro.fecha_hora_gen)}"
+# OJO: hay que pasar `anterior` a las dos llamadas. Con `anterior: nil` fijo se
+# imprimía la huella SIN encadenar mientras se enviaba la encadenada, y la cadena
+# salía con "Huella=" vacío. Es el peor sitio posible para una mentira: esto es
+# justo lo que se compara cuando la AEAT rechaza por huella.
+huella = registro.huella(anterior: anterior)
+cadena = Huella.cadena_alta(
+  id_emisor: registro.id_emisor, num_serie: registro.num_serie,
+  fecha_expedicion: registro.fecha_expedicion, tipo_factura: registro.tipo_factura,
+  cuota_total: registro.cuota_total, importe_total: registro.importe_total,
+  fecha_hora_gen: registro.fecha_hora_gen, huella_anterior: anterior&.huella
+)
+
+puts "\nHuella del registro: #{huella}"
+puts 'Cadena previa al hash (esto es lo que hay que comparar ante un rechazo):'
+puts "  #{cadena}"
+
+# Comprobación de coherencia: la huella impresa tiene que ser la que va dentro
+# del XML que se envía. Si divergen, lo que se muestra no sirve para depurar.
+unless xml.include?(">#{huella}<")
+  abort "\nINCOHERENCIA: la huella mostrada no es la que viaja en el XML."
+end
 
 transporte = Transporte.new(certificado: certificado, entorno: entorno,
                             sello: ENV['VF_SELLO'])
@@ -143,7 +156,7 @@ begin
     puts "\nPara encadenar el siguiente envío:"
     puts "  VF_ANTERIOR_SERIE='#{registro.num_serie}' \\"
     puts "  VF_ANTERIOR_FECHA='#{registro.fecha_expedicion}' \\"
-    puts "  VF_ANTERIOR_HUELLA=#{registro.huella(anterior: anterior)} \\"
+    puts "  VF_ANTERIOR_HUELLA=#{huella} \\"
     puts '    VF_P12=... VF_PASS=... ruby -Ilib examples/envio_pruebas.rb'
   end
 rescue VerifactuRails::RespuestaError => e
