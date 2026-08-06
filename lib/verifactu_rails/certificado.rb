@@ -84,6 +84,19 @@ module VerifactuRails
       nil
     end
 
+    # Nombre o razón social del titular, sin el NIF que la FNMT le pega al final
+    # del CN ("GARCIA LOPEZ ANA - 89890001K").
+    #
+    # Importa porque la AEAT identifica al obligado por el PAR NIF + NombreRazon:
+    # con el NIF correcto y un nombre que no cuadre responde 4104, y el mensaje
+    # habla solo del NIF aunque en el detalle devuelva los dos campos.
+    def titular
+      cn = sujeto['CN']
+      return nil if cn.nil?
+
+      cn.sub(/\s*-\s*#{Regexp.escape(nif.to_s)}\s*\z/, '').strip
+    end
+
     def resumen
       { titular: sujeto['CN'], organizacion: sujeto['O'],
         caduca: certificado.not_after, dias_restantes: dias_para_caducar,

@@ -24,8 +24,8 @@ def env!(nombre)
   ENV[nombre] || abort("Falta la variable #{nombre}. Ver la cabecera de este fichero.")
 end
 
-nif      = env!('VF_NIF')
-nombre   = env!('VF_NOMBRE')
+nif      = ENV['VF_NIF']
+nombre   = ENV['VF_NOMBRE']
 serie    = ENV['VF_SERIE'] || "PRUEBA/#{Time.now.strftime('%Y%m%d%H%M%S')}"
 entorno  = (ENV['VF_ENTORNO'] || 'pruebas').to_sym
 
@@ -33,15 +33,19 @@ certificado = Certificado.desde_pkcs12(File.binread(env!('VF_P12')), env!('VF_PA
 puts "Certificado: #{certificado.resumen}"
 puts "  caduca en #{certificado.dias_para_caducar} días" if certificado.caduca_pronto?
 
-# La AEAT exige que el titular del certificado coincida con el ObligadoEmision.
-# Si no coinciden, responde un 4104 "no está identificado", que parece decir que
-# el NIF no existe cuando lo que pasa es que no es el del certificado.
-case certificado.nif
-when nil       then puts '  (no se pudo leer el NIF del certificado; sin comprobar)'
-when nif       then puts "  NIF del certificado: #{certificado.nif} (coincide con VF_NIF)"
-else
-  abort "  EL NIF NO COINCIDE: el certificado es de #{certificado.nif} y VF_NIF es #{nif}.\n" \
-        '  La AEAT devolvería un 4104. Usa el NIF del titular del certificado.'
+# La AEAT identifica al obligado por el PAR NIF + NombreRazon, así que por
+# defecto se toman los dos del propio certificado: es la única combinación que
+# se sabe seguro que existe en el censo. Un nombre que no cuadre da un 4104 que
+# habla del NIF y despista.
+nif ||= certificado.nif || abort('No se pudo leer el NIF del certificado: pasa VF_NIF.')
+nombre ||= certificado.titular || abort('No se pudo leer el titular: pasa VF_NOMBRE.')
+
+puts "  Obligado: #{nif} / #{nombre}"
+if certificado.nif && certificado.nif != nif
+  abort "  EL NIF NO COINCIDE con el del certificado (#{certificado.nif}). La AEAT dará 4104."
+end
+if certificado.titular && certificado.titular.casecmp(nombre) != 0
+  puts "  AVISO: el nombre difiere del certificado (#{certificado.titular}). Si sale un 4104, es por aquí."
 end
 
 # Estos valores describen TU sistema de facturación, no esta gema.

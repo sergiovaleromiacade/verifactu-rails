@@ -81,6 +81,22 @@ class CertificadoTest < Minitest::Test
     end
   end
 
+  # La AEAT identifica al obligado por el par NIF + NombreRazon, así que el
+  # nombre limpio del titular es tan necesario como el NIF.
+  def test_extrae_el_titular_sin_el_nif_pegado_al_cn
+    casos = {
+      '/CN=GARCIA LOPEZ ANA - 89890001K' => 'GARCIA LOPEZ ANA',
+      '/CN=CERTIFICADO UNO TELEMATICAS - 89890001K/serialNumber=IDCES-89890001K' =>
+        'CERTIFICADO UNO TELEMATICAS',
+      '/CN=ACME SL/serialNumber=B12345674' => 'ACME SL'
+    }
+    casos.each do |subject, esperado|
+      cert, key = PKI.emitir(@ca_cert, @ca_key, subject: subject)
+      certificado = VerifactuRails::Certificado.desde_pkcs12(PKI.pkcs12(cert, key, 'x'), 'x')
+      assert_equal esperado, certificado.titular, subject
+    end
+  end
+
   # Mejor nil que un valor inventado: quien llama decide si sigue sin comprobar.
   def test_devuelve_nil_si_el_sujeto_no_lleva_nif
     cert, key = PKI.emitir(@ca_cert, @ca_key, subject: '/CN=SIN IDENTIFICADOR/O=ACME')
