@@ -262,7 +262,7 @@ module VerifactuRails
     def rectificativa? = tipo_factura.start_with?('R')
 
     # Huella de este registro. `anterior` es nil solo en el primer registro de la
-    # cadena del NIF+serie.
+    # cadena de ese SIF y NIF obligado (una sola cadena, no una por serie).
     #
     # @param anterior [RegistroAnterior, nil]
     def huella(anterior: nil)

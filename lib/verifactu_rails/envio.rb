@@ -11,7 +11,7 @@ module VerifactuRails
   #
   # El encadenamiento es estrictamente serial y esta clase NO lo gestiona: recibe
   # los registros ya emparejados con su registro anterior. Decidir cuál es el
-  # anterior exige un lock por NIF+serie en la base de datos, y eso pertenece a la
+  # anterior exige un lock por SIF+NIF en la base de datos, y eso pertenece a la
   # capa de integración, no a un generador de XML.
   class Envio
     MAXIMO_REGISTROS = 1000 # maxOccurs de RegistroFactura en el esquema

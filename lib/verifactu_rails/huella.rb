@@ -30,7 +30,8 @@ module VerifactuRails
     # Huella de un registro de facturación de ALTA.
     #
     # @param huella_anterior [String, nil] huella del registro previo de la cadena.
-    #   nil o "" únicamente para el primer registro del NIF+serie.
+    #   nil o "" únicamente para el PRIMER registro de ese SIF y NIF obligado.
+    #   Ojo: la cadena es una sola por SIF+NIF, NO una por serie de facturación.
     def alta(**datos)
       digerir(cadena_alta(**datos))
     end

@@ -49,7 +49,7 @@ Fuera de alcance: Facturae/B2G, TicketBAI/Batuz, TPV.
 | `VerifactuRails::Transporte` | Cliente HTTP con TLS mutuo contra el endpoint correcto |
 
 Pendiente: QR de cotejo, capa Rails (modelo append-only, job con lock por
-NIF+serie).
+SIF+NIF).
 
 ### Rectificativas
 
@@ -102,7 +102,8 @@ registro = RegistroAlta.new(
   destinatarios: [Destinatario.new(nombre_razon: 'Cliente SL', nif: '89890002E')]
 )
 
-# `anterior` es nil solo en el primer registro de la cadena de ese NIF+serie.
+# `anterior` es nil solo en el PRIMER registro de ese SIF+NIF. La cadena es una
+# sola por sistema y obligado, no una por serie.
 xml = Envio.new(nif_obligado: '89890001K', nombre_obligado: 'Tu Empresa SL',
                 entradas: [[registro, anterior]]).to_xml
 ```
@@ -139,7 +140,7 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
   falla, sospecha de un almacén anticuado o de un proxy que intercepte el TLS.
   Desactivar la comprobación nunca es el arreglo.
 - **El encadenamiento es estrictamente serial.** Rails procesa en paralelo: hace
-  falta un lock a nivel de base de datos por NIF+serie, no por factura.
+  falta un lock a nivel de base de datos por SIF+NIF, no por serie ni por factura.
 - **Los números de factura anulada no se reutilizan.** La AEAT responde "Registro
   de facturación duplicado".
 
