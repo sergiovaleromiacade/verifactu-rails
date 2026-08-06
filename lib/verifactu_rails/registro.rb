@@ -344,21 +344,30 @@ module VerifactuRails
 
     # Una sustitutiva reexpresa el importe corregido completo, así que hay que
     # declarar cuál era el original. Una incremental ya ES la diferencia.
+    # "Sólo deberá incluirse esta agrupación si el campo TipoRectificativa = 'S'.
+    #  Obligatorio si TipoRectificativa = 'S'." (Validaciones v1.2.2, ap. 3.1.3.6)
+    #
+    # Las dos direcciones, y "sólo si S" incluye el caso en que TipoRectificativa
+    # ni siquiera existe: una F1 con ImporteRectificacion también lo incumple.
     def validar_importe_rectificacion!
-      case tipo_rectificativa
-      when 'S'
-        if importe_rectificacion.nil?
-          raise ArgumentError,
-                'Una rectificativa por sustitución exige importe_rectificacion ' \
-                'con la base y la cuota que se sustituyen'
-        end
-      when 'I'
-        unless importe_rectificacion.nil?
-          raise ArgumentError,
-                'Una rectificativa incremental no lleva importe_rectificacion: ' \
-                'sus propios importes ya son la diferencia'
-        end
+      if tipo_rectificativa == 'S'
+        return unless importe_rectificacion.nil?
+
+        raise ArgumentError,
+              'Una rectificativa por sustitución exige importe_rectificacion ' \
+              'con la base y la cuota que se sustituyen'
       end
+
+      return if importe_rectificacion.nil?
+
+      raise ArgumentError,
+            if tipo_rectificativa == 'I'
+              'Una rectificativa incremental no lleva importe_rectificacion: ' \
+              'sus propios importes ya son la diferencia'
+            else
+              "TipoFactura #{tipo_factura} no admite importe_rectificacion: " \
+              "la AEAT solo lo permite con TipoRectificativa='S'"
+            end
     end
 
     # F3 es la factura emitida en sustitución de simplificadas. La agrupación

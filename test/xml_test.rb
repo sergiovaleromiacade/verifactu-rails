@@ -287,6 +287,22 @@ class XmlTest < Minitest::Test
     assert_match(/importe_rectificacion/, error.message)
   end
 
+  # "Sólo deberá incluirse si TipoRectificativa = 'S'" incluye el caso en que no
+  # hay TipoRectificativa ninguno. Una F1 con ImporteRectificacion lo incumple
+  # igual, y el XSD no lo detecta porque el campo es opcional.
+  def test_una_factura_no_rectificativa_no_admite_importe_rectificacion
+    %w[F1 F2 F3].each do |tipo|
+      error = assert_raises(ArgumentError, "#{tipo} no debería admitirlo") do
+        alta(tipo_factura: tipo,
+             destinatarios: tipo == 'F2' ? [] : [cliente],
+             importe_rectificacion: ImporteRectificacion.new(
+               base: BigDecimal('50.00'), cuota: BigDecimal('10.00')
+             ))
+      end
+      assert_match(/no admite importe_rectificacion/, error.message)
+    end
+  end
+
   # Sus propios importes ya son la diferencia: no hay nada que sustituir.
   def test_una_incremental_no_admite_importe_rectificacion
     error = assert_raises(ArgumentError) do
@@ -335,6 +351,48 @@ class XmlTest < Minitest::Test
   def test_rechaza_float_en_los_importes
     assert_raises(ArgumentError) { alta(importe_total: 121.0) }
     assert_raises(ArgumentError) { detalle(base_imponible: 100.0) }
+  end
+
+  # Barrido exhaustivo de las cuatro banderas de rectificación en los ocho tipos
+  # de factura. Existe porque un `case` sin rama para nil dejaba pasar una F1 con
+  # ImporteRectificacion: las reglas se validaban por separado y nadie comprobaba
+  # que juntas cubrieran todo el espacio.
+  #
+  # Las condiciones de abajo se escriben a partir del PDF, no del código, para
+  # que el test no herede el mismo error que pretende detectar.
+  def test_ninguna_combinacion_de_rectificacion_se_escapa
+    idf = rectificada
+    imp = ImporteRectificacion.new(base: BigDecimal('50.00'), cuota: BigDecimal('10.00'))
+    discrepancias = []
+
+    RegistroAlta::TIPOS_FACTURA.each do |tipo|
+      es_rectificativa = tipo.start_with?('R')
+      [nil, 'S', 'I'].product([[], [idf]], [[], [idf]], [nil, imp]) do |tr, rect, sust, ir|
+        admisible = (es_rectificativa ? !tr.nil? : tr.nil?) &&           # ap. 3.1.3.3
+                    (es_rectificativa || rect.empty?) &&                 # ap. 3.1.3.4
+                    (tipo == 'F3' || sust.empty?) &&                     # ap. 3.1.3.5
+                    (tr == 'S' ? !ir.nil? : ir.nil?)                     # ap. 3.1.3.6
+
+        construido = begin
+          alta(tipo_factura: tipo,
+               destinatarios: %w[F2 R5].include?(tipo) ? [] : [cliente],
+               tipo_rectificativa: tr, facturas_rectificadas: rect,
+               facturas_sustituidas: sust, importe_rectificacion: ir)
+          true
+        rescue ArgumentError
+          false
+        end
+
+        next if construido == admisible
+
+        discrepancias << "#{tipo} tipo_rectificativa=#{tr.inspect} " \
+                         "rectificadas=#{rect.size} sustituidas=#{sust.size} " \
+                         "importe=#{ir ? 1 : 0}: código dice #{construido}, norma #{admisible}"
+      end
+    end
+
+    assert_empty discrepancias, "Combinaciones que no cuadran con la norma:\n" +
+                                discrepancias.join("\n")
   end
 
   # --- validaciones de negocio de la AEAT (Validaciones v1.2.2) --------------
