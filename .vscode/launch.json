@@ -1,0 +1,26 @@
+{
+    // Use IntelliSense para saber los atributos posibles.
+    // Mantenga el puntero para ver las descripciones de los existentes atributos.
+    // Para más información, visite: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "ruby_lsp",
+            "name": "Debug script",
+            "request": "launch",
+            "command": "ruby"
+        },
+        {
+            "type": "ruby_lsp",
+            "name": "Debug test",
+            "request": "launch",
+            "command": "ruby -Itest",
+            "file": "${relativeFile}"
+        },
+        {
+            "type": "ruby_lsp",
+            "name": "Attach debugger",
+            "request": "attach"
+        }
+    ]
+}
