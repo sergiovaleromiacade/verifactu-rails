@@ -71,12 +71,22 @@ module VerifactuRails
       raise TransporteError, "Timeout contra #{uri.host}: #{e.class}"
     end
 
+    # Una declaración <?xml?> solo puede ir al principio del documento, y
+    # Envio#to_xml emite la suya. Incrustarla tal cual dentro del Body producía
+    # un sobre MAL FORMADO con dos declaraciones, que la AEAT contestó con
+    # "Codigo[102].Error interno en el servidor": el fallo era de parseo, no de
+    # validación, así que el mensaje no orientaba en absoluto.
+    DECLARACION_XML = /\A\s*<\?xml[^>]*\?>\s*/
+
     def envolver(xml_registro)
+      cuerpo = xml_registro.to_s.sub(DECLARACION_XML, '')
+      # document/literal según el WSDL: el Body lleva directamente el elemento,
+      # sin envoltorio de operación.
       <<~XML
         <?xml version="1.0" encoding="UTF-8"?>
         <soapenv:Envelope xmlns:soapenv="#{SOAP_NS}">
           <soapenv:Header/>
-          <soapenv:Body>#{xml_registro}</soapenv:Body>
+          <soapenv:Body>#{cuerpo}</soapenv:Body>
         </soapenv:Envelope>
       XML
     end

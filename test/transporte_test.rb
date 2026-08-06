@@ -3,8 +3,8 @@ require 'tmpdir'
 
 require 'minitest/autorun'
 require_relative 'support/pki'
-require_relative '../lib/verifactu_rails/certificado'
-require_relative '../lib/verifactu_rails/transporte'
+require_relative 'support/esquema'
+require_relative '../lib/verifactu-rails'
 
 class CertificadoTest < Minitest::Test
   def setup
@@ -180,6 +180,33 @@ class TransporteMTLSTest < Minitest::Test
     assert_includes sobre, '<soapenv:Body><Cabecera/></soapenv:Body>'
   end
 
+  # Este test existe por un fallo REAL en el primer envío a preproducción.
+  #
+  # El de arriba envolvía '<Cabecera/>', un relleno sin declaración XML, así que
+  # pasaba en verde. Pero Envio#to_xml SÍ emite su <?xml?>, y una declaración
+  # solo puede ir al principio del documento: el sobre real salía mal formado con
+  # dos declaraciones. La AEAT respondió "Codigo[102].Error interno en el
+  # servidor", que no dice nada porque el fallo era de parseo, no de validación.
+  #
+  # La lección: el payload del test tiene que ser el de verdad, no un stub.
+  def test_el_sobre_con_un_envio_real_esta_bien_formado
+    xml = VerifactuRails::Envio.new(
+      nif_obligado: 'B12345678', nombre_obligado: 'ACME SL',
+      entradas: [[registro_de_prueba, nil]]
+    ).to_xml
+    sobre = transporte_local(cliente_valido).envolver(xml)
+
+    assert_equal 1, sobre.scan('<?xml').size, 'solo puede haber UNA declaración XML'
+
+    doc = Nokogiri::XML(sobre) { |c| c.strict }
+    refute_predicate doc, :nil?
+
+    # Y lo que va dentro del Body sigue siendo el documento que valida el XSD.
+    cuerpo = doc.at_xpath('//soapenv:Body/*', 'soapenv' => VerifactuRails::Transporte::SOAP_NS)
+    assert_equal 'RegFactuSistemaFacturacion', cuerpo.name
+    assert_empty Esquema.errores(cuerpo.to_xml)
+  end
+
   private
 
   def cliente_valido
@@ -187,6 +214,26 @@ class TransporteMTLSTest < Minitest::Test
       c, k = PKI.emitir(@ca_cert, @ca_key, subject: '/CN=ACME SL/O=ACME SL')
       VerifactuRails::Certificado.desde_pkcs12(PKI.pkcs12(c, k, 'x'), 'x')
     end
+  end
+
+  def registro_de_prueba
+    sistema = VerifactuRails::SistemaInformatico.new(
+      nombre_razon: 'ACME SL', nif: 'B12345678', nombre_sistema: 'X',
+      id_sistema: '01', version: '1', numero_instalacion: '1'
+    )
+    VerifactuRails::RegistroAlta.new(
+      id_emisor: 'B12345678', num_serie: 'FA/1', fecha_expedicion: Date.today,
+      nombre_razon_emisor: 'ACME SL', tipo_factura: 'F1',
+      descripcion_operacion: 'Prueba',
+      desglose: [VerifactuRails::Detalle.new(
+        base_imponible: BigDecimal('100.00'), calificacion: 'S1',
+        tipo_impositivo: BigDecimal('21'), cuota_repercutida: BigDecimal('21.00')
+      )],
+      cuota_total: BigDecimal('21.00'), importe_total: BigDecimal('121.00'),
+      sistema_informatico: sistema, fecha_hora_gen: Time.now,
+      destinatarios: [VerifactuRails::Destinatario.new(nombre_razon: 'Cliente SL',
+                                                       nif: 'B87654321')]
+    )
   end
 
   def transporte_local(certificado)
