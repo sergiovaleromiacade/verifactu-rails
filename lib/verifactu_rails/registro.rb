@@ -93,6 +93,23 @@ module VerifactuRails
   # Un destinatario de la factura (sf:PersonaFisicaJuridicaType).
   # El NIF español y la identificación extranjera son excluyentes (<choice>).
   class Destinatario
+    # Lista L7 del Excel de diseños.
+    TIPOS_ID = %w[02 03 04 05 06 07].freeze
+
+    # sf:CountryType2. Se toman del XSD, que es el contrato.
+    PAISES = %w[
+      AF AL DE AD AO AI AQ AG SA DZ AR AM AW AU AT AZ BS BH BD BB BE BZ BJ BM BY
+      BO BA BW BV BR BN BG BF BI BT CV KY KH CM CA CF CC CO KM CG CD CK KP KR CI
+      CR HR CU TD CZ CL CN CY CW DK DM DO EC EG AE ER SK SI ES US EE ET FO PH FI
+      FJ FR GA GM GE GS GH GI GD GR GL GU GT GG GN GQ GW GY HT HM HN HK HU IN ID
+      IR IQ IE IM IS IL IT JM JP JE JO KZ KE KG KI KW LA LS LV LB LR LY LI LT LU
+      XG MO MK MG MY MW MV ML MT FK MP MA MH MU MR YT UM MX FM MD MC MN ME MS MZ
+      MM NA NR CX NP NI NE NG NU NF NO NC NZ IO OM NL BQ PK PW PA PG PY PE PN PF
+      PL PT PR QA GB RW RO RU RE SB SV WS AS KN SM SX PM VC SH LC ST SN RS SC SL
+      SG SY SO LK SZ ZA SD SS SE CH SR TH TW TZ TJ PS TF TL TG TK TO TT TN TC TM
+      TR TV UA UG UY UZ VU VA VE VN VG VI WF YE DJ ZM ZW QU XB XU XN
+    ].freeze
+
     attr_reader :nombre_razon, :nif, :id_otro
 
     # @param id_otro [Hash, nil] para no residentes:
@@ -111,12 +128,25 @@ module VerifactuRails
     private
 
     def normalizar_id_otro(datos)
-      {
-        'CodigoPais' => datos[:codigo_pais] &&
-          Formato.limitar(datos[:codigo_pais], 'CodigoPais', 2),
-        'IDType' => Formato.limitar(datos.fetch(:id_type), 'IDType', 2),
-        'ID' => Formato.limitar(datos.fetch(:id), 'ID', 20)
-      }.compact
+      tipo = Formato.enumerado(datos.fetch(:id_type), 'IDType', TIPOS_ID)
+      pais = datos[:codigo_pais] && Formato.enumerado(datos[:codigo_pais], 'CodigoPais', PAISES)
+
+      # Ap. 3.1.3.13. "No censado" solo tiene sentido en España, y desde España
+      # solo caben pasaporte (03) o no censado (07): un residente español con NIF
+      # se identifica con NIF, no por IDOtro.
+      if tipo == '07' && pais != 'ES'
+        raise ValidacionError, "IDType=07 (no censado) exige CodigoPais='ES'"
+      end
+      if pais == 'ES' && !%w[03 07].include?(tipo)
+        raise ValidacionError, "Con CodigoPais='ES', IDType solo puede ser 03 o 07"
+      end
+      # Con NIF-IVA el país va implícito en el propio identificador.
+      if tipo != '02' && pais.nil?
+        raise ValidacionError, "IDType=#{tipo} exige CodigoPais"
+      end
+
+      { 'CodigoPais' => pais, 'IDType' => tipo,
+        'ID' => Formato.limitar(datos.fetch(:id), 'ID', 20) }.compact
     end
   end
 

@@ -11,10 +11,29 @@ module VerifactuRails
   # el mismo que la AEAT usará para recalcular la huella. No formatear por otro
   # lado, nunca.
   class Detalle
-    IMPUESTOS = %w[01 02 03 05].freeze                    # 01 = IVA
+    IMPUESTOS = %w[01 02 03 05].freeze # 01 IVA, 02 IPSI, 03 IGIC, 05 Otros
     CALIFICACIONES = %w[S1 S2 N1 N2].freeze
-    EXENCIONES = %w[E1 E2 E3 E4 E5 E6 E7 E8].freeze
-    REGIMENES = %w[01 02 03 04 05 06 07 08 09 10 11 14 15 17 18 19 20 21].freeze
+
+    # Lista L10. E7 y E8 NO son valores generales: solo se admiten con IGIC
+    # (Validaciones v1.2.2, ap. 15.5).
+    EXENCIONES = %w[E1 E2 E3 E4 E5 E6].freeze
+    EXENCIONES_IGIC = (EXENCIONES + %w[E7 E8]).freeze
+
+    # ClaveRegimen admisible por impuesto: L8A para IVA, L8B (+20) para IGIC y el
+    # subconjunto del ap. 15.6 para IPSI. Con Impuesto = 05 (Otros) el campo no
+    # se puede informar en absoluto.
+    REGIMENES_IVA = %w[01 02 03 04 05 06 07 08 09 10 11 14 15 17 18 19 20].freeze
+    REGIMENES_IGIC = (REGIMENES_IVA + %w[21]).freeze
+    REGIMENES_IPSI = %w[01 08 11 18 19 20].freeze
+    REGIMENES = (REGIMENES_IGIC | REGIMENES_IVA).freeze
+
+    # Ap. 15.1 y 15.3, para IVA con operación sujeta y no exenta.
+    TIPOS_IMPOSITIVOS_IVA = %w[0.00 2.00 4.00 5.00 7.50 10.00 21.00].freeze
+    RECARGOS_IVA = %w[0.00 0.26 0.50 0.62 1.00 1.40 1.75 5.20].freeze
+
+    # Campos que solo tienen sentido en una operación sujeta y no exenta.
+    CAMPOS_DE_SUJECION = %i[tipo_impositivo cuota_repercutida
+                            tipo_recargo cuota_recargo].freeze
 
     attr_reader :base_imponible, :calificacion, :exenta, :tipo_impositivo,
                 :cuota_repercutida, :impuesto, :clave_regimen,
@@ -33,9 +52,12 @@ module VerifactuRails
 
       @base_imponible = Importe.formatear(base_imponible)
       @calificacion = calificacion && Formato.enumerado(calificacion, 'CalificacionOperacion', CALIFICACIONES)
-      @exenta = exenta && Formato.enumerado(exenta, 'OperacionExenta', EXENCIONES)
       @impuesto = impuesto && Formato.enumerado(impuesto, 'Impuesto', IMPUESTOS)
-      @clave_regimen = clave_regimen && Formato.enumerado(clave_regimen, 'ClaveRegimen', REGIMENES)
+      @exenta = exenta && Formato.enumerado(exenta, 'OperacionExenta', exenciones_admitidas)
+      # Sin normalizar todavía: con Impuesto=05 no cabe ninguna clave, y un
+      # enumerado de lista vacía daría "Admitidos: " en lugar del motivo real.
+      # validar_clave_regimen! resuelve primero ese caso.
+      @clave_regimen = clave_regimen&.to_s
       @tipo_impositivo = tipo_impositivo && Importe.porcentaje(tipo_impositivo, 'TipoImpositivo')
       @cuota_repercutida = cuota_repercutida && Importe.formatear(cuota_repercutida)
       @tipo_recargo = tipo_recargo && Importe.porcentaje(tipo_recargo, 'TipoRecargoEquivalencia')
@@ -64,17 +86,105 @@ module VerifactuRails
       pares
     end
 
+    def iva? = impuesto.nil? || impuesto == '01' # si no se informa, se asume IVA
+
     private
 
+    def exenciones_admitidas = impuesto == '03' ? EXENCIONES_IGIC : EXENCIONES
+
+    # Ap. 15.6. Con Impuesto = 05 (Otros) el campo no se puede informar; ahí la
+    # lista vacía hace que Formato.enumerado rechace cualquier valor.
+    def regimenes_admitidos
+      case impuesto
+      when '02' then REGIMENES_IPSI
+      when '03' then REGIMENES_IGIC
+      when '05' then []
+      else REGIMENES_IVA
+      end
+    end
+
+    def presentes(campos) = campos.select { |c| !send(c).nil? }
+
     def validar_coherencia!
-      if exenta? && cuota_repercutida
-        raise ValidacionError,
-              'Una operación exenta no puede llevar CuotaRepercutida'
+      validar_clave_regimen!
+      validar_exenta!
+      validar_calificacion!
+      validar_recargo!
+    end
+
+    # Ap. 15.6: solo cabe con IVA, IPSI o IGIC, y ahí es obligatorio.
+    def validar_clave_regimen!
+      if impuesto == '05'
+        return if clave_regimen.nil?
+
+        raise ValidacionError, 'ClaveRegimen no se puede informar con Impuesto=05 (Otros)'
       end
+      if clave_regimen.nil?
+        raise ValidacionError, "ClaveRegimen es obligatorio con Impuesto=#{impuesto || '01'}"
+      end
+
+      @clave_regimen = Formato.enumerado(clave_regimen, 'ClaveRegimen', regimenes_admitidos)
+    end
+
+    # Ap. 15.5: una exenta no admite ninguno de los campos de sujeción.
+    def validar_exenta!
+      return unless exenta?
+
+      sobran = presentes(CAMPOS_DE_SUJECION)
+      unless sobran.empty?
+        raise ValidacionError,
+              "Una operación exenta (#{exenta}) no admite #{sobran.join(', ')}"
+      end
+      return unless %w[E2 E3].include?(exenta) && clave_regimen == '01' && (iva? || impuesto == '03')
+
+      raise ValidacionError,
+            "OperacionExenta #{exenta} no cabe con ClaveRegimen=01"
+    end
+
+    # Ap. 15.4 y 15.7.
+    def validar_calificacion!
+      case calificacion
+      when 'S1' then validar_sujeta_no_exenta!
+      when 'S2'
+        # Inversión del sujeto pasivo: la cuota la repercute el destinatario.
+        unless tipo_impositivo == '0.00' && cuota_repercutida == '0.00'
+          raise ValidacionError,
+                'CalificacionOperacion S2 (inversión del sujeto pasivo) exige ' \
+                'tipo_impositivo y cuota_repercutida a cero, ambos informados'
+        end
+      when 'N1', 'N2'
+        return unless iva?
+
+        sobran = presentes(CAMPOS_DE_SUJECION)
+        return if sobran.empty?
+
+        raise ValidacionError,
+              "Una operación no sujeta (#{calificacion}) no admite #{sobran.join(', ')}"
+      end
+    end
+
+    def validar_sujeta_no_exenta!
+      if tipo_impositivo.nil? || cuota_repercutida.nil?
+        raise ValidacionError,
+              'CalificacionOperacion S1 exige tipo_impositivo y cuota_repercutida'
+      end
+      return unless iva? && !TIPOS_IMPOSITIVOS_IVA.include?(tipo_impositivo)
+
+      raise ValidacionError,
+            "TipoImpositivo #{tipo_impositivo} no existe en IVA. " \
+            "Admitidos: #{TIPOS_IMPOSITIVOS_IVA.join(', ')}"
+    end
+
+    def validar_recargo!
       if cuota_recargo && tipo_recargo.nil?
-        raise ValidacionError,
-              'CuotaRecargoEquivalencia exige TipoRecargoEquivalencia'
+        raise ValidacionError, 'CuotaRecargoEquivalencia exige TipoRecargoEquivalencia'
       end
+      return unless tipo_recargo && iva? && calificacion == 'S1'
+      return if RECARGOS_IVA.include?(tipo_recargo)
+
+      raise ValidacionError,
+            "TipoRecargoEquivalencia #{tipo_recargo} no existe en IVA. " \
+            "Admitidos: #{RECARGOS_IVA.join(', ')}"
     end
   end
 

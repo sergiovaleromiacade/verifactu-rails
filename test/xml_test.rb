@@ -840,6 +840,142 @@ class XmlTest < Minitest::Test
     assert_match(/B12345678/, error.message)
   end
 
+  # --- coherencia del desglose (Validaciones v1.2.2, ap. 15) -----------------
+
+  def linea(**extra)
+    Detalle.new(base_imponible: BigDecimal('100.00'), **extra)
+  end
+
+  # Ap. 15.5: una exenta no admite ninguno de los campos de sujeción.
+  def test_una_exenta_no_admite_los_campos_de_sujecion
+    { tipo_impositivo: BigDecimal('21'), cuota_repercutida: BigDecimal('21'),
+      tipo_recargo: BigDecimal('5.2') }.each do |campo, valor|
+      error = assert_raises(ValidacionError, campo.to_s) do
+        linea(exenta: 'E1', campo => valor)
+      end
+      assert_match(/operación exenta/, error.message)
+    end
+  end
+
+  # Ap. 15.5: E7 y E8 no están en L10, solo se añaden con IGIC.
+  def test_e7_y_e8_solo_existen_con_igic
+    %w[E7 E8].each do |exencion|
+      assert_raises(ValidacionError) { linea(exenta: exencion) }
+      assert_instance_of Detalle, linea(exenta: exencion, impuesto: '03')
+    end
+  end
+
+  def test_e2_y_e3_no_caben_con_clave_regimen_01
+    %w[E2 E3].each do |exencion|
+      error = assert_raises(ValidacionError) { linea(exenta: exencion, clave_regimen: '01') }
+      assert_match(/no cabe con ClaveRegimen=01/, error.message)
+      assert_instance_of Detalle, linea(exenta: exencion, clave_regimen: '02')
+    end
+  end
+
+  # Ap. 15.7: con S1 ambos campos son obligatorios.
+  def test_una_operacion_sujeta_exige_tipo_y_cuota
+    error = assert_raises(ValidacionError) { linea(calificacion: 'S1') }
+    assert_match(/S1 exige tipo_impositivo y cuota_repercutida/, error.message)
+  end
+
+  # Ap. 15.1: solo los siete tipos del IVA.
+  def test_el_tipo_impositivo_de_iva_esta_tasado
+    %w[0 2 4 5 7.5 10 21].each do |ok|
+      assert_instance_of Detalle,
+                         linea(calificacion: 'S1', tipo_impositivo: BigDecimal(ok),
+                               cuota_repercutida: BigDecimal('1.00'))
+    end
+    error = assert_raises(ValidacionError) do
+      linea(calificacion: 'S1', tipo_impositivo: BigDecimal('13'),
+            cuota_repercutida: BigDecimal('13'))
+    end
+    assert_match(/no existe en IVA/, error.message)
+  end
+
+  # Ap. 15.3.
+  def test_el_recargo_de_equivalencia_esta_tasado
+    assert_instance_of Detalle,
+                       linea(calificacion: 'S1', tipo_impositivo: BigDecimal('21'),
+                             cuota_repercutida: BigDecimal('21'),
+                             tipo_recargo: BigDecimal('5.2'),
+                             cuota_recargo: BigDecimal('5.20'))
+    assert_raises(ValidacionError) do
+      linea(calificacion: 'S1', tipo_impositivo: BigDecimal('21'),
+            cuota_repercutida: BigDecimal('21'), tipo_recargo: BigDecimal('9'),
+            cuota_recargo: BigDecimal('9'))
+    end
+  end
+
+  # Ap. 15.4: en la inversión del sujeto pasivo la cuota la repercute el otro.
+  def test_s2_exige_tipo_y_cuota_a_cero
+    assert_instance_of Detalle,
+                       linea(calificacion: 'S2', tipo_impositivo: BigDecimal('0'),
+                             cuota_repercutida: BigDecimal('0'))
+    error = assert_raises(ValidacionError) do
+      linea(calificacion: 'S2', tipo_impositivo: BigDecimal('21'),
+            cuota_repercutida: BigDecimal('21'))
+    end
+    assert_match(/inversión del sujeto pasivo/, error.message)
+    assert_raises(ValidacionError) { linea(calificacion: 'S2') }
+  end
+
+  # Ap. 15.4: las no sujetas no llevan ninguno de esos campos.
+  def test_las_no_sujetas_no_admiten_tipo_ni_cuota
+    %w[N1 N2].each do |calificacion|
+      assert_instance_of Detalle, linea(calificacion: calificacion)
+      error = assert_raises(ValidacionError) do
+        linea(calificacion: calificacion, cuota_repercutida: BigDecimal('21'))
+      end
+      assert_match(/no sujeta/, error.message)
+    end
+  end
+
+  # Ap. 15.6: ClaveRegimen solo con IVA, IPSI o IGIC, y ahí obligatorio.
+  def test_la_clave_de_regimen_depende_del_impuesto
+    error = assert_raises(ValidacionError) do
+      linea(calificacion: 'N1', impuesto: '05', clave_regimen: '01')
+    end
+    assert_match(/no se puede informar con Impuesto=05/, error.message)
+
+    assert_instance_of Detalle, linea(calificacion: 'N1', impuesto: '05', clave_regimen: nil)
+
+    faltante = assert_raises(ValidacionError) do
+      linea(calificacion: 'N1', impuesto: '01', clave_regimen: nil)
+    end
+    assert_match(/obligatorio con Impuesto/, faltante.message)
+
+    # 21 solo existe en IGIC; 02 (IPSI) tiene su propio subconjunto.
+    assert_instance_of Detalle, linea(calificacion: 'N1', impuesto: '03', clave_regimen: '21')
+    assert_raises(ValidacionError) { linea(calificacion: 'N1', impuesto: '01', clave_regimen: '21') }
+    assert_raises(ValidacionError) { linea(calificacion: 'N1', impuesto: '02', clave_regimen: '02') }
+  end
+
+  # Ap. 3.1.5: dos posiciones, mayúscula (salvo Ñ) o dígito.
+  def test_el_id_del_sistema_informatico_son_dos_posiciones_tasadas
+    %w[a 1 abc a1 Ñ1 a-].each do |malo|
+      assert_raises(ValidacionError, malo) { sistema(id_sistema: malo) }
+    end
+    assert_instance_of SistemaInformatico, sistema(id_sistema: 'A1')
+    assert_instance_of SistemaInformatico, sistema(id_sistema: '77')
+  end
+
+  # Ap. 3.1.3.13: reglas finas de la identificación extranjera.
+  def test_la_identificacion_extranjera_sigue_las_reglas_de_la_aeat
+    fuera = lambda do |**otro|
+      Destinatario.new(nombre_razon: 'Client', id_otro: otro)
+    end
+
+    assert_instance_of Destinatario, fuera.call(id_type: '02', id: 'FR12345678901')
+    assert_instance_of Destinatario, fuera.call(codigo_pais: 'ES', id_type: '03', id: 'X1')
+
+    assert_raises(ValidacionError) { fuera.call(codigo_pais: 'FR', id_type: '07', id: 'X1') }
+    assert_raises(ValidacionError) { fuera.call(codigo_pais: 'ES', id_type: '04', id: 'X1') }
+    assert_raises(ValidacionError) { fuera.call(id_type: '03', id: 'X1') }
+    assert_raises(ValidacionError) { fuera.call(codigo_pais: 'ZZ', id_type: '03', id: 'X1') }
+    assert_raises(ValidacionError) { fuera.call(codigo_pais: 'FR', id_type: '99', id: 'X1') }
+  end
+
   def test_el_desglose_ayuda_a_cuadrar_totales_sin_imponerlos
     d = Desglose.new([detalle, detalle])
 

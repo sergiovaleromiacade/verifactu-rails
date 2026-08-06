@@ -32,7 +32,7 @@ module VerifactuRails
       @nombre_razon = Formato.limitar(nombre_razon, 'NombreRazon', 120)
       @nif = Formato.nif(nif, 'NIF del productor')
       @nombre_sistema = Formato.limitar(nombre_sistema, 'NombreSistemaInformatico', 30)
-      @id_sistema = Formato.limitar(id_sistema, 'IdSistemaInformatico', 2)
+      @id_sistema = validar_id_sistema(id_sistema)
       @version = Formato.limitar(version, 'Version', 50)
       @numero_instalacion = Formato.limitar(numero_instalacion, 'NumeroInstalacion', 100)
       # Por Formato.si_no y no por valor de verdad: 'N' es truthy en Ruby y se
@@ -47,6 +47,12 @@ module VerifactuRails
               'sistema declara que no lo admite'
       end
     end
+
+    # Ap. 3.1.5: "deberá tener rellenas siempre las dos posiciones, cada una de
+    # las cuales deberá ser una letra mayúscula, excepto la Ñ, o un dígito
+    # numérico". El XSD solo limita la longitud a 2, así que sin esto pasaban
+    # valores de una posición o en minúscula.
+    PATRON_ID_SISTEMA = /\A[A-Z0-9]{2}\z/
 
     def solo_verifactu = SOLO_VERIFACTU
     def multi_ot? = @multi_ot
@@ -66,6 +72,17 @@ module VerifactuRails
         'TipoUsoPosibleMultiOT' => multi_ot ? 'S' : 'N',
         'IndicadorMultiplesOT' => multiples_ot ? 'S' : 'N'
       }
+    end
+
+    private
+
+    def validar_id_sistema(valor)
+      cadena = Formato.limitar(valor, 'IdSistemaInformatico', 2)
+      return cadena if cadena.match?(PATRON_ID_SISTEMA)
+
+      raise ValidacionError,
+            'IdSistemaInformatico debe tener exactamente dos posiciones, cada una ' \
+            "una letra mayúscula (salvo la Ñ) o un dígito: #{cadena.inspect}"
     end
   end
 end
