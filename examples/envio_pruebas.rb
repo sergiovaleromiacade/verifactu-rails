@@ -2,11 +2,17 @@
 
 # Envío de humo contra el entorno de PRUEBAS de la AEAT (prewww1/prewww10).
 #
-#   VF_P12=/ruta/cert.p12 VF_PASS=xxxx VF_NIF=B12345678 VF_NOMBRE='Tu Empresa SL' \
+#   VF_P12=/ruta/cert.p12 VF_PASS=xxxx VF_NIF=89890001K VF_NOMBRE='Tu Empresa SL' \
 #     ruby -Ilib examples/envio_pruebas.rb
 #
 # El certificado se lee de una ruta que pasas por entorno: no lo copies dentro
 # del repositorio (.gitignore bloquea *.p12, pero mejor que ni llegue).
+#
+# VF_NIF tiene que ser TU NIF real, el del titular del certificado. La AEAT lo
+# comprueba en dos pasos y con errores distintos: 4116 si el dígito de control no
+# cuadra (un NIF inventado como "B12345678" cae aquí) y 4104 si el formato es
+# correcto pero el NIF no consta como obligado. El 89890001K del ejemplo de
+# arriba es el NIF de pruebas de la documentación de la AEAT, no el tuyo.
 #
 # AVISO: preproducción es para pruebas PUNTUALES. La AEAT advierte que un uso
 # masivo puede acabar en bloqueo de acceso, así que este guion manda UN registro.

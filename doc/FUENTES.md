@@ -224,6 +224,27 @@ Listado completo en `https://prewww2.aeat.es/static_files/common/internet/dep/ap
 (ISO-8859-1). **247 códigos** en tres categorías: 44 rechazan el envío completo,
 193 rechazan la factura, y **10** producen aceptación con obligación de subsanar.
 
+## Contrastado contra preproducción (06-08-2026)
+
+Primeros envíos reales a `prewww1.aeat.es` con un certificado de representante de
+la FNMT. Lo que confirman:
+
+- **mTLS funciona sin `ca_file`.** `HTTP 200` a la primera. Cierra el punto 3 de
+  "pendiente de verificar" del traspaso, que ya se había descartado inspeccionando
+  la cadena TLS y ahora tiene una prueba de verdad.
+- **`Certificado#sello?` acierta el caso negativo.** Un certificado de
+  representante da `false` y va a `prewww1`, que es lo correcto. Queda sin probar
+  el caso positivo (un certificado de sello real).
+- **El sobre SOAP llevaba dos declaraciones XML.** Respuesta:
+  `Codigo[102].Error interno en el servidor`. Era un fallo de parseo, no de
+  negocio, y por eso el mensaje no orientaba. Corregido en `Transporte#envolver`.
+- **El NIF se valida en dos pasos, con códigos distintos**: `4116` si el dígito de
+  control no cuadra y `4104` si el formato es correcto pero el NIF no consta como
+  obligado. Un NIF inventado con forma plausible (`B12345678`) cae en el 4116.
+- **Los fallos de servicio llegan como SOAP Fault**, no como
+  `RespuestaSuministro`, con el código dentro de `faultstring` en el formato
+  `Codigo[NNNN].descripción`. `Respuesta` lo extrae.
+
 ## Ejemplos de registro
 
 `ejemploRegistro.xml` y `ejemploRegistro-firmado-epes-xades4j.xml` (fuera del

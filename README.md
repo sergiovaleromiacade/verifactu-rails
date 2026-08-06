@@ -2,9 +2,9 @@
 
 Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rails.
 
-> **Estado: en desarrollo, sin release público.** La capa Rails todavía no existe
-> y nada se ha probado aún contra el entorno real de la AEAT. La API puede cambiar
-> sin aviso.
+> **Estado: en desarrollo, sin release público.** La capa Rails todavía no existe.
+> El transporte sí está probado contra el entorno de pruebas de la AEAT (mTLS y
+> respuestas reales); el envío completo, todavía no. La API puede cambiar sin aviso.
 
 ## Qué es y qué no es
 
@@ -63,7 +63,7 @@ exclusiva de `R1`–`R5`, y `facturas_sustituidas:` es opcional pero exclusiva d
 ```ruby
 RegistroAlta.new(
   ..., tipo_factura: 'R1', tipo_rectificativa: 'S',
-  facturas_rectificadas: [IdFactura.new(id_emisor: 'B12345678',
+  facturas_rectificadas: [IdFactura.new(id_emisor: '89890001K',
                                         num_serie: 'FA/2026/0001',
                                         fecha_expedicion: Date.new(2026, 8, 1))],
   importe_rectificacion: ImporteRectificacion.new(base: BigDecimal('100.00'),
@@ -83,13 +83,13 @@ include VerifactuRails
 
 # Quien despliega el SIF se identifica; no es esta gema, es tu sistema.
 sistema = SistemaInformatico.new(
-  nombre_razon: 'Tu Empresa SL', nif: 'B12345678',
+  nombre_razon: 'Tu Empresa SL', nif: '89890001K',
   nombre_sistema: 'TuFactura', id_sistema: '01',
   version: '1.0.0', numero_instalacion: 'INST-1'
 )
 
 registro = RegistroAlta.new(
-  id_emisor: 'B12345678', num_serie: 'FA/2026/0001',
+  id_emisor: '89890001K', num_serie: 'FA/2026/0001',
   fecha_expedicion: Date.new(2026, 8, 6), nombre_razon_emisor: 'Tu Empresa SL',
   tipo_factura: 'F1', descripcion_operacion: 'Servicios de agosto',
   desglose: [Detalle.new(base_imponible: BigDecimal('100.00'), calificacion: 'S1',
@@ -97,11 +97,11 @@ registro = RegistroAlta.new(
                          cuota_repercutida: BigDecimal('21.00'))],
   cuota_total: BigDecimal('21.00'), importe_total: BigDecimal('121.00'),
   sistema_informatico: sistema, fecha_hora_gen: Time.now,
-  destinatarios: [Destinatario.new(nombre_razon: 'Cliente SL', nif: 'B87654321')]
+  destinatarios: [Destinatario.new(nombre_razon: 'Cliente SL', nif: '89890002E')]
 )
 
 # `anterior` es nil solo en el primer registro de la cadena de ese NIF+serie.
-xml = Envio.new(nif_obligado: 'B12345678', nombre_obligado: 'Tu Empresa SL',
+xml = Envio.new(nif_obligado: '89890001K', nombre_obligado: 'Tu Empresa SL',
                 entradas: [[registro, anterior]]).to_xml
 ```
 
@@ -147,7 +147,7 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 bundle exec rake test
 ```
 
-90 tests, ~1230 aserciones. Incluye verificación cruzada de la huella contra
+143 tests, ~1540 aserciones. Incluye verificación cruzada de la huella contra
 `josemmo/Verifactu-PHP` y `mybooking-es/verifactu-rb`, y validación del XML
 generado contra los XSD oficiales de la AEAT, versionados en
 [lib/verifactu_rails/schemas](lib/verifactu_rails/schemas/PROCEDENCIA.md).
