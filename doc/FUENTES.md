@@ -326,6 +326,38 @@ secuencial propio del obligado.
 `IndicadorMultiplesOT` va a "S" cuando un SIF en la nube atiende a varios
 obligados a la vez.
 
+### La AEAT no impide bifurcar la cadena (comprobado)
+
+Se envió dos veces el mismo `RegistroAnterior`: dos altas distintas apuntando
+ambas al **mismo** predecesor. **La AEAT aceptó las dos con `Correcto`**, sin
+aviso ni error admisible. Verificado recalculando las huellas de las dos contra
+el eslabón común.
+
+```
+Registro 1  (PrimerRegistro)
+   ├── Registro 2   -> anterior: Registro 1
+   └── Registro 3   -> anterior: Registro 1     <-- cadena bifurcada, aceptada
+```
+
+Es el hallazgo con más consecuencias de diseño de toda la integración:
+
+- **No hay red de seguridad.** La AEAT no valida al recibir que el
+  `RegistroAnterior` sea de verdad el último anotado. Una condición de carrera
+  —dos procesos leyendo a la vez cuál era el último— produce una cadena rota que
+  se acepta en silencio y no se descubre al enviar.
+- **El lock no es una optimización, es lo único que sostiene la integridad.** Si
+  se elige la arquitectura de un solo SIF, ese lock por SIF+NIF es obligatorio.
+  Con SIF virtuales por fuente el problema se reparte, pero dentro de cada uno
+  sigue haciendo falta.
+- **Que no lo rechacen no significa que no lo vean.** La AEAT conserva todos los
+  registros, y la lista L1E de tipos de anomalía incluye justamente
+  "Trazabilidad-cadena-huella: el campo huella del registro anterior no se
+  corresponde con la huella del registro anterior" (07 y 08). Lo que no hay es
+  detección síncrona.
+
+Corolario para las pruebas: reenviar el mismo `VF_ANTERIOR_*` dos veces "funciona"
+y no demuestra nada sobre la corrección de la cadena.
+
 ### De dónde sale la huella anterior
 
 **No la da la AEAT.** Hay que guardarla: cada registro almacena su propia huella,
