@@ -72,8 +72,21 @@ module VerifactuRails
     # Longitud fija de 9 según sf:NIFType. El XSD no valida el dígito de control,
     # y nosotros tampoco: rechazar un NIF válido por una tabla desactualizada
     # sería peor que dejar que la AEAT lo rechace.
+    # Se normaliza a MAYÚSCULAS, y esto sí es una excepción deliberada a la regla
+    # de "rechazar en vez de arreglar" que rige `texto`.
+    #
+    # Motivo, comprobado contra preproducción: un NIF con la letra en minúscula
+    # ("89890001k") supera la validación de FORMATO de la AEAT (no da 4116) pero
+    # falla la búsqueda en el censo, que sí distingue mayúsculas, y devuelve un
+    # 4104 "no está identificado" que apunta al sitio equivocado: parece que el
+    # NIF no existe cuando lo único que pasa es que va en minúscula.
+    #
+    # La diferencia con los espacios al borde es que ahí el valor original podía
+    # significar algo (un campo de ancho fijo mal recortado, por ejemplo) y
+    # recortar lo taparía. Aquí no: la forma canónica de un NIF es en mayúsculas
+    # y "c" y "C" denotan la misma letra de control. No se pierde información.
     def nif(valor, campo = 'NIF')
-      cadena = texto(valor, campo)
+      cadena = texto(valor, campo).upcase
       unless cadena.length == 9
         raise ValidacionError, "#{campo} debe tener 9 caracteres: #{cadena.inspect}"
       end
