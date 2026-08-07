@@ -12,6 +12,7 @@ Descargados y contrastados el **6 de agosto de 2026**.
 |---|---|---|
 | [Especificaciones huella/hash](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Veri-Factu_especificaciones_huella_hash_registros.pdf) | 0.1.2 | `f4334c254bb875b417247b54315199f8…` |
 | [Validaciones y errores](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf) | 1.2.2 | `426eb926fc098a36a163f66ca5f40d9e…` |
+| [Detalle de las especificaciones técnicas del código QR](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/DetalleEspecificacTecnCodigoQRfactura.pdf) | 0.5.0 (10-12-2025) | `f86b3c260d8a4963dbc18c5007732b53…` |
 
 Para comprobar si han cambiado:
 
@@ -507,3 +508,38 @@ sigue dependiendo del propio SIF; el servicio de consulta no lo resuelve.
   un formato concreto sino coherencia.
 - El orden de las filas **no es cronológico** (los `TimestampUltimaModificacion`
   vuelven desordenados), así que no conviene apoyarse en él para nada.
+
+## La URL del código QR: la AEAT NO la devuelve
+
+Conviene decirlo explícito porque es la suposición natural y es falsa: **la URL de
+cotejo no llega en ninguna respuesta**. No aparece en `RespuestaSuministro.xsd`,
+ni en `RespuestaConsultaLR.xsd`, ni se menciona en el PDF de Validaciones. La
+construye el propio SIF con datos que ya tiene.
+
+```
+Pruebas:     https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?
+Producción:  https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?
+```
+
+Cuatro parámetros: `nif`, `numserie`, `fecha` (DD-MM-AAAA) e `importe`. Los cuatro
+están en el propio `RegistroAlta` en el momento de construirlo.
+
+- **El host NO es el del SOAP.** El cotejo va contra `prewww2` /
+  `www2.agenciatributaria.gob.es`, mientras que los envíos van por `prewww1` y
+  `prewww10` (`www1`/`www10` en producción). Es un endpoint aparte.
+- **Hay una URL distinta para NO VERI\*FACTU** (`ValidarQRNoVerifactu`), fuera del
+  alcance de esta gema.
+- **El URL encoding no es opcional, y el caso es alcanzable.** El ap. 4 del PDF
+  dedica un apartado a ello y pone como contraejemplo un `numserie=12345678&G33`
+  sin codificar, que parte la URL. `Formato.num_serie` prohíbe `"` `'` `<` `>` `=`
+  pero sí admite `&`, `%`, `+` y espacios, así que un número de serie perfectamente
+  válido para el envío puede romper el QR si se concatena sin codificar. UTF-8.
+- El importe del ejemplo oficial es `241.4`, sin cero final: mismo criterio que ya
+  consta para la huella.
+
+**Consecuencia de diseño.** Como el QR no depende de la respuesta de la AEAT, se
+puede generar en el mismo momento en que se crea el registro y bajo el mismo lock,
+antes de enviar nada. La impresión de la factura queda desacoplada del envío
+asíncrono. Ojo al matiz: que el QR sea *válido* no significa que la factura
+*conste*; si el envío nunca llega a completarse, quien escanee obtendrá un "no
+consta". El QR se genera al crear, pero el estado de envío hay que seguirlo igual.
