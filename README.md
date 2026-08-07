@@ -2,9 +2,9 @@
 
 Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rails.
 
-> **Estado: en desarrollo, sin release público.** La capa Rails existe ya de
-> cintura para arriba: libro registro, encadenamiento bajo lock y autochequeo. Le
-> falta el envío por lotes.
+> **Estado: en desarrollo, sin release público.** La capa Rails ya cierra el
+> ciclo: libro registro, encadenamiento bajo lock, autochequeo y envío por lotes.
+> Falta el generador y la reconciliación contra la consulta.
 > El entorno de pruebas de la AEAT ha aceptado, con la huella validada por su
 > propio recálculo: altas encadenadas, un lote de tres registros encadenados
 > entre sí en un mismo envío, una anulación, una rectificativa R1 sustitutiva y
@@ -172,6 +172,27 @@ la fila de la cadena bloqueada**. Tres cosas que conviene entender:
 - **El número de instalación no se autogenera jamás.** Si la gema lo hiciera, un
   contenedor que se recrea en cada despliegue abriría una instalación por
   despliegue, y eso vacía de sentido el encadenamiento.
+
+### Enviar
+
+```ruby
+transporte = VerifactuRails::Transporte.new(certificado: cert, entorno: :pruebas)
+VerifactuRails::Libro::Remesa.new(cadena, transporte: transporte).enviar!
+# => #<Resultado estado: :enviado|:esperando|:nada_pendiente|:bloqueada_por_rechazo>
+```
+
+Llámalo desde un job encolado tras `anotar_alta!`, y también desde un cron de
+seguridad por si un job se perdió. Es idempotente: reenviar algo ya anotado
+devuelve "duplicado", y eso **cuenta como éxito**.
+
+- **Agrupar no es el modo normal.** Las FAQs exigen remisión "inmediata o sin
+  demora apreciable" a la expedición. Un comercio que factura cada diez minutos
+  mandará siempre un registro por petición; el tope de 1000 es un techo para quien
+  factura rápido. El tamaño del lote lo dicta el ritmo, no una decisión tuya.
+- **Un rechazo detiene la cadena.** Un registro rechazado no consta en la AEAT, y
+  todo lo que encadena detrás apunta a un eslabón que allí no existe. Seguir
+  enviando funcionaría —la AEAT no valida el eslabón al recibir— y dejaría una
+  cadena incoherente aceptada en silencio. Resolverlo es una decisión de negocio.
 
 ## Avisos de implementación
 
