@@ -59,22 +59,50 @@ recoge literalmente en sus dos direcciones ("Sólo deberá incluirse esta agrupa
 si el campo TipoRectificativa = 'S'" y "Obligatorio si TipoRectificativa = 'S'").
 No queda ninguna regla inferida en el código de rectificativas.
 
-Pendientes de implementar (no bloquean, pero convendría):
+Reglas incorporadas después, releyendo el PDF apartado por apartado:
 
-- **Ap. 3.1.3.10 `Macrodato`**: obligatorio si `ImporteTotal >= |100.000.000,00|`.
-- **Ap. 3.1.3.8/9**: `FacturaSimplificadaArt7273` solo en F1/F3/R1-R4;
-  `FacturaSinIdentifDestinatarioArt61d` solo en F2/R5.
-- **Ap. 3.1.3.11/12**: `EmitidaPorTerceroODestinatario` = "T" exige bloque
-  `Tercero`; = "D" exige `Destinatarios`.
-- **Ap. 3.1.3.13**: reglas finas de `IDOtro` (si `IDType=07`, `CodigoPais` debe ser
-  "ES"; si `CodigoPais=ES`, `IDType` debe ser "03" o "07"; `IDType=02` exige
-  TipoFactura F1/F3/R1-R4).
-- **Ap. 3.1.3.14 `Cupon`**: solo con TipoFactura R5 o R1.
-- **Ap. 3.1.3.15**: tabla larga de coherencia entre `Impuesto`, `ClaveRegimen`,
-  `TipoImpositivo`, `CalificacionOperacion` y `OperacionExenta`. Es el bloque más
-  grande que queda.
-- **Ap. 3.1.3.2**: `RechazoPrevio` solo con `Subsanacion`. Ninguno de los dos
-  campos está soportado todavía.
+| Ap. | Regla | Dónde |
+|---|---|---|
+| 2 | `RechazoPrevio` distinto de "N" solo dentro de una subsanación | `#validar_subsanacion!` |
+| 8 y 9 | `FacturaSimplificadaArt7273` solo en F1/F3/R1-R4; `FacturaSinIdentifDestinatarioArt61d` solo en F2/R5 | `#validar_marcas!` |
+| 10 | `Macrodato` obligatorio si `ImporteTotal >= |100.000.000,00|` | `#validar_macrodato!` |
+| 11 | `EmitidaPorTerceroODestinatario` "T" exige `Tercero`; "D" exige `Destinatarios` | `#validar_emisor_tercero!` |
+| 12 | `Tercero` solo con "T", NIF distinto del emisor, sin `IDType` 07, y desde ES solo 03 | ídem y `Tercero` |
+| 13 | Reglas de `IDOtro` del destinatario (07 exige ES; desde ES solo 03 o 07) | `IdOtro.normalizar` |
+| 14 | `Cupon` solo "S" y solo con R1 o R5 | `#validar_cupon!` |
+| 15.1 | Ventanas temporales de `TipoImpositivo` (errores 1235-1236) | `Detalle#validar_en_fecha!` |
+| 15.3 | El recargo de equivalencia tiene que cuadrar con el tipo impositivo | ídem |
+| 15.4 | `CalificacionOperacion` S2 solo en F1/F3/R1-R4 | `#validar_inversion_sujeto_pasivo!` |
+| 15.4-15.7 | Coherencia de `Calificacion`, `OperacionExenta`, `ClaveRegimen` y recargo | `Detalle#validar_coherencia!` |
+
+Tres cosas que conviene entender de este bloque:
+
+- **El 5 % ya no es declarable a secas.** Fue una rebaja temporal cuya ventana
+  cerró el 30-09-2024, y como `FechaExpedicionFactura` no puede ser anterior al
+  28-10-2024, hoy solo cabe informando una `FechaOperacion` dentro de la ventana.
+  Lo mismo, con otras fechas, para el 2 % y el 7,5 %. La fecha contra la que se
+  mide es `FechaOperacion`, y la de expedición si aquella falta.
+- **Las reglas cruzadas no caben en el objeto del que hablan.** Un `Detalle` no
+  conoce el `TipoFactura` ni la fecha de la operación, así que 15.1, 15.3 y 15.4
+  las dispara `RegistroAlta`, igual que `Envio` es quien comprueba que el emisor
+  de cada registro sea el obligado de la cabecera.
+- **Fuera de las ventanas que la norma menciona no se impone nada.** Para el 0 %
+  y el 5 % el texto solo habla de tramos concretos; inventar una restricción para
+  el resto sería repetir el error que ya hubo con 3.1.3.4 y 3.1.3.5.
+
+### La única regla del ap. 13 que se decidió NO implementar
+
+"Si un destinatario se identifica por `IDOtro` con `IDType=02`, `TipoFactura` debe
+ser F1/F3/R1-R4". Es **redundante**: los ocho tipos de factura se reparten entre
+los que exigen destinatario (F1, F3, R1-R4) y los que lo prohíben (F2, R5), así
+que si hay un destinatario el tipo ya está en esa lista, se identifique como se
+identifique. Escribirla habría dejado una comprobación incapaz de fallar, que es
+peor que no tenerla: aparenta cobertura y no cubre nada.
+
+### Lo que sigue sin implementarse
+
+- **Ap. 15.2 `BaseImponibleACoste`**: el campo no está soportado por la gema, así
+  que no hay nada que validar todavía.
 
 ### Lo que NO provoca rechazo
 
@@ -293,7 +321,7 @@ se implementaron leyendo el ap. 15 de Validaciones:
 | 1238 | Una exenta no admite esos cuatro campos | `Detalle#validar_exenta!` |
 | 1245 | ClaveRegimen obligatoria con IVA/IPSI/IGIC | `Detalle#validar_clave_regimen!` |
 | 1232-1234 | Reglas cruzadas de IDType y CodigoPais | `Destinatario#normalizar_id_otro` |
-| 1235-1236 | Ventanas temporales de TipoImpositivo | **pendiente** |
+| 1235-1236 | Ventanas temporales de TipoImpositivo | `Detalle#validar_en_fecha!` |
 
 ## Cadenas, instalaciones y facturación desde varias fuentes
 

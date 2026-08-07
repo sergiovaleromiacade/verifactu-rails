@@ -44,6 +44,7 @@ Fuera de alcance: Facturae/B2G, TicketBAI/Batuz, TPV.
 | `VerifactuRails::Importe` | Formateo de importes; el mismo string va en la huella y en el XML |
 | `VerifactuRails::Formato` | Fechas, marcas temporales y NIF, normalizados en un único sitio |
 | `VerifactuRails::Detalle` / `Desglose` | Líneas del desglose de IVA (máximo 12) |
+| `VerifactuRails::Destinatario` / `Tercero` | Identificación del cliente y de quien expide por cuenta ajena |
 | `VerifactuRails::SistemaInformatico` | Identificación del SIF, obligatoria en cada registro |
 | `VerifactuRails::RegistroAlta` / `RegistroAnulacion` | El registro: calcula su huella y emite su XML |
 | `VerifactuRails::Envio` | Documento `RegFactuSistemaFacturacion` (lote de hasta 1000) |

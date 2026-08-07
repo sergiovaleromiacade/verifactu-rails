@@ -90,11 +90,16 @@ module VerifactuRails
     end
   end
 
-  # Un destinatario de la factura (sf:PersonaFisicaJuridicaType).
-  # El NIF español y la identificación extranjera son excluyentes (<choice>).
-  class Destinatario
+  # Identificación de quien no tiene NIF español (sf:IDOtroType).
+  #
+  # Las reglas NO son las mismas según quién se identifique. Un destinatario
+  # admite "no censado" (07) y desde España acepta 03 o 07; un tercero no admite
+  # 07 en absoluto y desde España solo acepta 03 (Validaciones v1.2.2, ap. 12 y
+  # 13). Por eso lo que varía entra por parámetro: duplicar el método era la vía
+  # segura a que las dos copias se desincronizaran.
+  module IdOtro
     # Lista L7 del Excel de diseños.
-    TIPOS_ID = %w[02 03 04 05 06 07].freeze
+    TIPOS = %w[02 03 04 05 06 07].freeze
 
     # sf:CountryType2. Se toman del XSD, que es el contrato.
     PAISES = %w[
@@ -110,6 +115,36 @@ module VerifactuRails
       TR TV UA UG UY UZ VU VA VE VN VG VI WF YE DJ ZM ZW QU XB XU XN
     ].freeze
 
+    module_function
+
+    # @param quien [String] para el mensaje de error
+    # @param tipos_con_es [Array<String>] IDType admitidos si CodigoPais = "ES"
+    # @param prohibidos [Array<String>] IDType que este bloque no admite nunca
+    def normalizar(datos, quien:, tipos_con_es:, prohibidos: [])
+      tipo = Formato.enumerado(datos.fetch(:id_type), 'IDType', TIPOS - prohibidos)
+      pais = datos[:codigo_pais] && Formato.enumerado(datos[:codigo_pais], 'CodigoPais', PAISES)
+
+      # "No censado" solo tiene sentido en España.
+      if tipo == '07' && pais != 'ES'
+        raise ValidacionError, "IDType=07 (no censado) exige CodigoPais='ES'"
+      end
+      if pais == 'ES' && !tipos_con_es.include?(tipo)
+        raise ValidacionError,
+              "Con CodigoPais='ES', el IDType de #{quien} solo puede ser " \
+              "#{tipos_con_es.join(' o ')}"
+      end
+      # Con NIF-IVA (02) el país va implícito en el propio identificador.
+      raise ValidacionError, "IDType=#{tipo} exige CodigoPais" if tipo != '02' && pais.nil?
+
+      { 'CodigoPais' => pais, 'IDType' => tipo,
+        'ID' => Formato.limitar(datos.fetch(:id), 'ID', 20) }.compact
+    end
+  end
+
+  # Una persona identificada por NIF español O por identificación extranjera,
+  # nunca las dos (sf:PersonaFisicaJuridicaType lo modela como <choice>).
+  # Destinatario y Tercero comparten forma pero no reglas de identificación.
+  class Persona
     attr_reader :nombre_razon, :nif, :id_otro
 
     # @param id_otro [Hash, nil] para no residentes:
@@ -117,37 +152,39 @@ module VerifactuRails
     def initialize(nombre_razon:, nif: nil, id_otro: nil)
       if nif.nil? == id_otro.nil?
         raise ValidacionError,
-              'Indica exactamente uno de nif: o id_otro: para el destinatario'
+              "Indica exactamente uno de nif: o id_otro: para #{self.class.quien}"
       end
 
       @nombre_razon = Formato.limitar(nombre_razon, 'NombreRazon', 120)
-      @nif = nif && Formato.nif(nif, 'NIF del destinatario')
-      @id_otro = id_otro && normalizar_id_otro(id_otro)
+      @nif = nif && Formato.nif(nif, "NIF de #{self.class.quien}")
+      @id_otro = id_otro && IdOtro.normalizar(id_otro, quien: self.class.quien,
+                                                       tipos_con_es: self.class.tipos_con_es,
+                                                       prohibidos: self.class.prohibidos)
     end
 
-    private
+    def id_type = id_otro && id_otro['IDType']
 
-    def normalizar_id_otro(datos)
-      tipo = Formato.enumerado(datos.fetch(:id_type), 'IDType', TIPOS_ID)
-      pais = datos[:codigo_pais] && Formato.enumerado(datos[:codigo_pais], 'CodigoPais', PAISES)
-
-      # Ap. 3.1.3.13. "No censado" solo tiene sentido en España, y desde España
-      # solo caben pasaporte (03) o no censado (07): un residente español con NIF
-      # se identifica con NIF, no por IDOtro.
-      if tipo == '07' && pais != 'ES'
-        raise ValidacionError, "IDType=07 (no censado) exige CodigoPais='ES'"
-      end
-      if pais == 'ES' && !%w[03 07].include?(tipo)
-        raise ValidacionError, "Con CodigoPais='ES', IDType solo puede ser 03 o 07"
-      end
-      # Con NIF-IVA el país va implícito en el propio identificador.
-      if tipo != '02' && pais.nil?
-        raise ValidacionError, "IDType=#{tipo} exige CodigoPais"
-      end
-
-      { 'CodigoPais' => pais, 'IDType' => tipo,
-        'ID' => Formato.limitar(datos.fetch(:id), 'ID', 20) }.compact
+    # Orden EXACTO de sf:PersonaFisicaJuridicaType.
+    def a_pares
+      pares = { 'NombreRazon' => nombre_razon }
+      nif ? pares.merge('NIF' => nif) : pares.merge('IDOtro' => id_otro)
     end
+  end
+
+  # Un destinatario de la factura. Ap. 13: admite pasaporte (03) o no censado
+  # (07) desde España; un residente español con NIF se identifica con NIF.
+  class Destinatario < Persona
+    def self.quien = 'un destinatario'
+    def self.tipos_con_es = %w[03 07]
+    def self.prohibidos = []
+  end
+
+  # El tercero que expide la factura o genera el registro. Ap. 12: aquí NO cabe
+  # "no censado" y desde España solo pasaporte, a diferencia del destinatario.
+  class Tercero < Persona
+    def self.quien = 'un tercero'
+    def self.tipos_con_es = %w[03]
+    def self.prohibidos = %w[07]
   end
 
   # Registro de facturación de ALTA.
@@ -170,10 +207,21 @@ module VerifactuRails
     RECHAZOS_PREVIOS = %w[N S X].freeze
 
     # Destinatarios: obligatorio en unos tipos, prohibido en otros
-    # (Validaciones v1.2.2, ap. 3.1.3.13). F2 y R5 son las simplificadas, donde
-    # por definición no se identifica al destinatario.
+    # (Validaciones v1.2.2, ap. 13). F2 y R5 son las simplificadas, donde por
+    # definición no se identifica al destinatario.
+    #
+    # OJO al reutilizar esta lista: otras dos reglas coinciden con ella por
+    # motivos distintos -el NIF-IVA de un destinatario (ap. 13) y la inversión
+    # del sujeto pasivo (ap. 15.4) exigen los mismos tipos-, así que si la AEAT
+    # cambia una sola de las tres habrá que separarlas.
     TIPOS_CON_DESTINATARIO = %w[F1 F3 R1 R2 R3 R4].freeze
     TIPOS_SIN_DESTINATARIO = %w[F2 R5].freeze
+
+    # Ap. 11. Quién emitió la factura, si no fue el propio obligado.
+    EMISORES = %w[D T].freeze # D = destinatario, T = tercero
+
+    # Ap. 14. El cupón solo cabe en estos dos tipos.
+    TIPOS_CON_CUPON = %w[R1 R5].freeze
 
     # Entrada en vigor de la Orden HAC/1177/2024.
     FECHA_MINIMA = Date.new(2024, 10, 28)
@@ -198,7 +246,8 @@ module VerifactuRails
                 :facturas_rectificadas, :facturas_sustituidas,
                 :importe_rectificacion, :subsanacion, :rechazo_previo,
                 :simplificada_cualificada, :sin_identif_destinatario, :macrodato,
-                :num_registro_acuerdo, :id_acuerdo_sistema
+                :num_registro_acuerdo, :id_acuerdo_sistema, :emitida_por,
+                :tercero, :cupon
 
     # @param subsanacion ['S', 'N', true, false, nil] marca el alta como
     #   subsanación de un registro ya generado. Es el ÚNICO mecanismo para
@@ -212,7 +261,8 @@ module VerifactuRails
                    facturas_sustituidas: [], importe_rectificacion: nil,
                    subsanacion: nil, rechazo_previo: nil,
                    simplificada_cualificada: nil, sin_identif_destinatario: nil,
-                   macrodato: nil, num_registro_acuerdo: nil, id_acuerdo_sistema: nil)
+                   macrodato: nil, num_registro_acuerdo: nil, id_acuerdo_sistema: nil,
+                   emitida_por: nil, tercero: nil, cupon: nil)
       @id_emisor = Formato.nif(id_emisor, 'IDEmisorFactura')
       @num_serie = Formato.num_serie(num_serie)
       @fecha_expedicion = Formato.fecha(fecha_expedicion)
@@ -248,6 +298,10 @@ module VerifactuRails
                               Formato.limitar(num_registro_acuerdo, 'NumRegistroAcuerdoFacturacion', 15)
       @id_acuerdo_sistema = id_acuerdo_sistema &&
                             Formato.limitar(id_acuerdo_sistema, 'IdAcuerdoSistemaInformatico', 16)
+      @emitida_por = emitida_por &&
+                     Formato.enumerado(emitida_por, 'EmitidaPorTerceroODestinatario', EMISORES)
+      @tercero = tercero && Formato.objeto(tercero, 'tercero', Tercero)
+      @cupon = Formato.si_no(cupon, 'Cupon')
 
       validar_fecha_expedicion!(fecha_expedicion)
       validar_subsanacion!
@@ -257,6 +311,16 @@ module VerifactuRails
       validar_destinatarios!
       validar_rectificativa!
       validar_sustitutiva!
+      validar_emisor_tercero!
+      validar_cupon!
+      validar_desglose_cruzado!
+    end
+
+    # FechaOperacion, y la de expedición si aquella no se informa. Es la fecha
+    # contra la que la AEAT mide las ventanas temporales de tipos y recargos
+    # (Validaciones v1.2.2, ap. 15.1 y 15.3).
+    def fecha_referencia
+      Date.strptime(fecha_operacion || fecha_expedicion, '%d-%m-%Y')
     end
 
     def rectificativa? = tipo_factura.start_with?('R')
@@ -307,7 +371,10 @@ module VerifactuRails
           xml['sum1'].FacturaSinIdentifDestinatarioArt61d sin_identif_destinatario
         end
         xml['sum1'].Macrodato macrodato if macrodato
+        xml['sum1'].EmitidaPorTerceroODestinatario emitida_por if emitida_por
+        xml['sum1'].Tercero { construir_persona(xml, tercero) } if tercero
         construir_destinatarios(xml)
+        xml['sum1'].Cupon cupon if cupon
         construir_desglose(xml)
         xml['sum1'].CuotaTotal cuota_total
         xml['sum1'].ImporteTotal importe_total
@@ -328,15 +395,19 @@ module VerifactuRails
 
       xml['sum1'].Destinatarios do
         destinatarios.each do |d|
-          xml['sum1'].IDDestinatario do
-            xml['sum1'].NombreRazon d.nombre_razon
-            if d.nif
-              xml['sum1'].NIF d.nif
-            else
-              xml['sum1'].IDOtro { d.id_otro.each { |k, v| xml['sum1'].send(k, v) } }
-            end
-          end
+          xml['sum1'].IDDestinatario { construir_persona(xml, d) }
         end
+      end
+    end
+
+    # sf:PersonaFisicaJuridicaType. Lo comparten Destinatario y Tercero, que
+    # tienen la misma forma aunque no las mismas reglas de identificación.
+    def construir_persona(xml, persona)
+      xml['sum1'].NombreRazon persona.nombre_razon
+      if persona.nif
+        xml['sum1'].NIF persona.nif
+      else
+        xml['sum1'].IDOtro { persona.id_otro.each { |k, v| xml['sum1'].send(k, v) } }
       end
     end
 
@@ -473,6 +544,74 @@ module VerifactuRails
 
       raise ValidacionError,
             "TipoFactura #{tipo_factura} es simplificada y no admite destinatarios"
+    end
+
+    # NO se implementa la última regla del ap. 13 ("si un destinatario se
+    # identifica por IDOtro con IDType=02, TipoFactura debe ser F1/F3/R1-R4")
+    # porque es REDUNDANTE con las dos de arriba: los ocho tipos de factura se
+    # reparten entre los que exigen destinatario (F1, F3, R1-R4) y los que lo
+    # prohíben (F2, R5), así que si hay un destinatario el tipo ya está en esa
+    # lista, se identifique como se identifique. Añadir el código habría dejado
+    # una comprobación que no puede fallar nunca: parece que cubre algo y no
+    # cubre nada.
+
+    # Ap. 11 y 12. Quién emitió la factura y el bloque Tercero se condicionan
+    # mutuamente, en las dos direcciones.
+    def validar_emisor_tercero!
+      if emitida_por == 'T' && tercero.nil?
+        raise ValidacionError,
+              "emitida_por: 'T' exige el bloque tercero: con quien expidió la factura"
+      end
+      if emitida_por == 'D' && destinatarios.empty?
+        raise ValidacionError,
+              "emitida_por: 'D' exige destinatarios: la emitió el destinatario, " \
+              'así que hay que identificarlo'
+      end
+      if tercero && emitida_por != 'T'
+        raise ValidacionError,
+              "tercero: solo cabe con emitida_por: 'T' (recibido: #{emitida_por.inspect})"
+      end
+      return unless tercero&.nif == id_emisor
+
+      raise ValidacionError,
+            "El NIF del tercero (#{tercero.nif}) no puede ser el del emisor: si " \
+            'la factura la expide el propio obligado, no hay tercero que declarar'
+    end
+
+    # Ap. 14. La norma dice "sólo se podrá rellenar con S", así que un 'N'
+    # explícito no es un valor válido: es un campo que sobra.
+    def validar_cupon!
+      return if cupon.nil?
+
+      if cupon == 'N'
+        raise ValidacionError,
+              "Cupon solo admite 'S'; si la factura no lleva cupón, omite el campo"
+      end
+      return if TIPOS_CON_CUPON.include?(tipo_factura)
+
+      raise ValidacionError,
+            "Cupon solo cabe con TipoFactura #{TIPOS_CON_CUPON.join(' o ')} " \
+            "(recibido #{tipo_factura})"
+    end
+
+    # Reglas que cruzan el desglose con datos del registro. Un Detalle aislado no
+    # conoce ni el TipoFactura ni la fecha de la operación, así que estas no
+    # pueden vivir en Detalle por mucho que hablen del desglose.
+    def validar_desglose_cruzado!
+      validar_inversion_sujeto_pasivo!
+      desglose.detalles.each { |d| d.validar_en_fecha!(fecha_referencia) }
+    end
+
+    # Ap. 15.4, primera regla. Coincide en lista con TIPOS_CON_DESTINATARIO pero
+    # es otra regla: aquí lo que no cabe es repercutir por inversión del sujeto
+    # pasivo en una simplificada.
+    def validar_inversion_sujeto_pasivo!
+      return unless desglose.detalles.any? { |d| d.calificacion == 'S2' }
+      return if TIPOS_CON_DESTINATARIO.include?(tipo_factura)
+
+      raise ValidacionError,
+            "CalificacionOperacion S2 (inversión del sujeto pasivo) no cabe con " \
+            "TipoFactura #{tipo_factura}: solo #{TIPOS_CON_DESTINATARIO.join(', ')}"
     end
 
     # Coherencia de las rectificativas. El XSD deja casi todo opcional, así que

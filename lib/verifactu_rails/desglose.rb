@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'date' # VENTANAS_TIPO y RECARGOS_POR_TIPO construyen Date al cargar
 require_relative 'formato'
 require_relative 'importe'
 require_relative 'error'
@@ -30,6 +31,37 @@ module VerifactuRails
     # Ap. 15.1 y 15.3, para IVA con operación sujeta y no exenta.
     TIPOS_IMPOSITIVOS_IVA = %w[0.00 2.00 4.00 5.00 7.50 10.00 21.00].freeze
     RECARGOS_IVA = %w[0.00 0.26 0.50 0.62 1.00 1.40 1.75 5.20].freeze
+
+    # Ap. 15.1. Tres de los tipos NO son de aplicación permanente: fueron
+    # rebajas temporales y solo se admiten si la fecha de referencia cae dentro
+    # de su ventana. Los demás no llevan ventana.
+    #
+    # Consecuencia práctica que sorprende: como FechaExpedicionFactura no puede
+    # ser anterior al 28-10-2024, el 5 % ya NO es declarable salvo que se informe
+    # una FechaOperacion dentro de su ventana. Es el origen de los errores 1235 y
+    # 1236 de la AEAT.
+    VENTANAS_TIPO = {
+      '5.00' => [Date.new(2022, 7, 1), Date.new(2024, 9, 30)],
+      '2.00' => [Date.new(2024, 10, 1), Date.new(2024, 12, 31)],
+      '7.50' => [Date.new(2024, 10, 1), Date.new(2024, 12, 31)]
+    }.freeze
+
+    # Ap. 15.3. Qué recargo de equivalencia admite cada tipo impositivo. Cada
+    # entrada es [ventana, recargos]; ventana nil significa "siempre".
+    #
+    # Solo se exige lo que la norma afirma. Para el 0 % y el 5 % fuera de sus
+    # ventanas el texto no dice nada, y ahí NO se inventa una restricción: ser
+    # más estricto que la norma ya bloqueó casos válidos antes en esta gema.
+    RECARGOS_POR_TIPO = {
+      '21.00' => [[nil, %w[5.20 1.75]]],
+      '10.00' => [[nil, %w[1.40]]],
+      '7.50' => [[nil, %w[1.00]]],
+      '4.00' => [[nil, %w[0.50]]],
+      '2.00' => [[nil, %w[0.26]]],
+      '5.00' => [[[nil, Date.new(2022, 12, 31)], %w[0.50]],
+                 [[Date.new(2023, 1, 1), Date.new(2024, 9, 30)], %w[0.62]]],
+      '0.00' => [[[Date.new(2023, 1, 1), Date.new(2024, 9, 30)], %w[0.00]]]
+    }.freeze
 
     # Campos que solo tienen sentido en una operación sujeta y no exenta.
     CAMPOS_DE_SUJECION = %i[tipo_impositivo cuota_repercutida
@@ -67,6 +99,19 @@ module VerifactuRails
     end
 
     def exenta? = !@exenta.nil?
+
+    # Reglas del ap. 15.1 y 15.3 que dependen de la fecha de la operación, que
+    # esta clase no conoce: la aporta RegistroAlta, que es quien sabe si hay
+    # FechaOperacion o hay que caer en FechaExpedicionFactura. Se deja aquí y no
+    # allí para que la tabla viva junto al resto de reglas del desglose.
+    #
+    # Ambas cuelgan de "Impuesto = 01 (IVA) y CalificacionOperacion = S1".
+    def validar_en_fecha!(fecha)
+      return unless iva? && calificacion == 'S1'
+
+      validar_ventana_tipo!(fecha)
+      validar_recargo_en_fecha!(fecha)
+    end
 
     # Orden EXACTO de sf:DetalleType (<sequence>).
     def a_pares
@@ -173,6 +218,36 @@ module VerifactuRails
       raise ValidacionError,
             "TipoImpositivo #{tipo_impositivo} no existe en IVA. " \
             "Admitidos: #{TIPOS_IMPOSITIVOS_IVA.join(', ')}"
+    end
+
+    def validar_ventana_tipo!(fecha)
+      desde, hasta = VENTANAS_TIPO[tipo_impositivo]
+      return if desde.nil? || fecha.between?(desde, hasta)
+
+      raise ValidacionError,
+            "TipoImpositivo #{tipo_impositivo} solo se admite entre " \
+            "#{desde.strftime('%d-%m-%Y')} y #{hasta.strftime('%d-%m-%Y')} " \
+            "(fecha de referencia: #{fecha.strftime('%d-%m-%Y')}). Fue una rebaja " \
+            'temporal; si la operación es de aquellas fechas, informa fecha_operacion.'
+    end
+
+    def validar_recargo_en_fecha!(fecha)
+      return if tipo_recargo.nil?
+
+      tramos = RECARGOS_POR_TIPO[tipo_impositivo] || []
+      tramo = tramos.find { |ventana, _| en_ventana?(ventana, fecha) }
+      return if tramo.nil? || tramo[1].include?(tipo_recargo)
+
+      raise ValidacionError,
+            "Con TipoImpositivo #{tipo_impositivo}, el recargo de equivalencia solo " \
+            "puede ser #{tramo[1].join(' o ')} (recibido #{tipo_recargo})"
+    end
+
+    def en_ventana?(ventana, fecha)
+      return true if ventana.nil?
+
+      desde, hasta = ventana
+      (desde.nil? || fecha >= desde) && (hasta.nil? || fecha <= hasta)
     end
 
     def validar_recargo!
