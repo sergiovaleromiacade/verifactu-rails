@@ -13,6 +13,10 @@ Descargados y contrastados el **6 de agosto de 2026**.
 | [Especificaciones huella/hash](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Veri-Factu_especificaciones_huella_hash_registros.pdf) | 0.1.2 | `f4334c254bb875b417247b54315199f8…` |
 | [Validaciones y errores](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf) | 1.2.2 | `426eb926fc098a36a163f66ca5f40d9e…` |
 | [Detalle de las especificaciones técnicas del código QR](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/DetalleEspecificacTecnCodigoQRfactura.pdf) | 0.5.0 (10-12-2025) | `f86b3c260d8a4963dbc18c5007732b53…` |
+| [Preguntas frecuentes de empresas de desarrollo](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/FAQs-Desarrolladores.pdf) | 1.3 (04-12-2025) | `73906dc8afbbb9da35f6cb489980352b…` |
+
+Índice de los documentos, por si cambian de nombre:
+[Documentación VERI\*FACTU para desarrolladores](https://www.agenciatributaria.es/AEAT.desarrolladores/Desarrolladores/_menu_/Documentacion/Sistemas_Informaticos_de_Facturacion_y_Sistemas_VERI_FACTU/Sistemas_Informaticos_de_Facturacion_y_Sistemas_VERI_FACTU.html)
 
 Para comprobar si han cambiado:
 
@@ -543,3 +547,42 @@ antes de enviar nada. La impresión de la factura queda desacoplada del envío
 asíncrono. Ojo al matiz: que el QR sea *válido* no significa que la factura
 *conste*; si el envío nunca llega a completarse, quien escanee obtendrá un "no
 consta". El QR se genera al crear, pero el estado de envío hay que seguirlo igual.
+
+## Inmediatez frente a control de flujo: los lotes NO son el modo normal
+
+Las FAQs (v1.3) son tajantes sobre el ritmo de remisión, y conviene tenerlo claro
+antes de diseñar la capa de envío:
+
+> debe asegurarse que la generación del RF se produzca de forma "simultánea"
+> (entiéndase inmediata o sin demora apreciable) a la expedición de la factura
+> para su instantáneo almacenamiento o remisión a la AEAT
+
+Es decir: **el modo normal es una factura, un envío, en el acto**. Nadie obliga a
+un comercio pequeño a acumular. Agrupar hasta 1000 registros es un *techo* del
+esquema para quien factura rápido, no un objetivo de diseño.
+
+Las FAQs añaden dos matices por si el envío inmediato no sale:
+
+- La conservación local **no está regulada** en modalidad VERI\*FACTU, porque los
+  registros los conserva la AEAT. Aun así, las propias FAQs dicen que "parece
+  lógico" conservarlos. Para esta gema no es opcional: sin tabla local no hay
+  histórico de la cadena (ver más arriba: la consulta devuelve una foto por
+  factura, no el libro).
+- Para subsanaciones y anulaciones **no hay plazo máximo fijado**; se hacen "en
+  cuanto sea posible".
+
+### Lo que sigue sin saberse: qué vale `TiempoEsperaEnvio` en producción
+
+Ni el PDF de Validaciones ni el XSD documentan la semántica del campo: el esquema
+lo declara y no lo anota. Lo único medido es que **preproducción devolvió 60 s en
+los cuatro envíos de la campaña, con lotes de 1 y de 3 registros**, o sea que no
+escalaba con el tamaño del lote. De ahí NO se puede concluir que en producción sea
+60 s, ni que ese valor sea fijo: la AEAT lo devuelve en cada respuesta justamente
+porque es un valor, no una constante.
+
+Consecuencia práctica para el diseño, que no depende de resolver esta incógnita:
+el job envía **lo que haya pendiente** cuando la espera vigente ha vencido. Un
+comercio que factura cada diez minutos manda siempre un registro por petición y
+nunca agrupa; un TPV con mucho volumen agrupa solo porque le llegan más facturas
+de las que caben en una ventana. **El tamaño del lote es una consecuencia del
+ritmo de facturación, no una decisión.** El mismo código sirve para los dos.
