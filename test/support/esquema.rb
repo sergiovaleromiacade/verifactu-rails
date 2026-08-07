@@ -17,6 +17,14 @@ module Esquema
     @suministro_lr ||= compilar('SuministroLR.xsd')
   end
 
+  def consulta_lr
+    @consulta_lr ||= compilar('ConsultaLR.xsd')
+  end
+
+  def respuesta_consulta_lr
+    @respuesta_consulta_lr ||= compilar('RespuestaConsultaLR.xsd')
+  end
+
   def compilar(fichero)
     ruta = File.join(ESQUEMAS, fichero)
     # Con la ruta como URL base: sin ella los imports relativos del XSD se
@@ -26,5 +34,13 @@ module Esquema
 
   def errores(xml)
     suministro_lr.validate(Nokogiri::XML(xml))
+  end
+
+  def errores_consulta(xml)
+    consulta_lr.validate(Nokogiri::XML(xml))
+  end
+
+  def errores_respuesta_consulta(xml)
+    respuesta_consulta_lr.validate(Nokogiri::XML(xml))
   end
 end

@@ -12,6 +12,7 @@ require_relative 'verifactu_rails/sistema_informatico'
 require_relative 'verifactu_rails/registro'
 require_relative 'verifactu_rails/envio'
 require_relative 'verifactu_rails/respuesta'
+require_relative 'verifactu_rails/consulta'
 require_relative 'verifactu_rails/certificado'
 require_relative 'verifactu_rails/transporte'
 
