@@ -16,3 +16,8 @@ Gemfile.lock
 
 .DS_Store
 /.ruby-lsp/
+
+# Diario de las campañas contra preproducción: lleva el NIF del obligado, los CSV
+# de la AEAT y las huellas de una cadena concreta. Es un registro de ejecución,
+# no fuente.
+/campana-*.jsonl
