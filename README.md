@@ -3,10 +3,12 @@
 Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rails.
 
 > **Estado: en desarrollo, sin release público.** La capa Rails todavía no existe.
-> Dos altas encadenadas SÍ han sido aceptadas por el entorno de pruebas de la
-> AEAT, con la huella validada por su propio recálculo. Siguen sin probarse contra
-> el servicio real las anulaciones, las rectificativas, la subsanación y los lotes
-> de más de un registro. La API puede cambiar sin aviso.
+> El entorno de pruebas de la AEAT ha aceptado, con la huella validada por su
+> propio recálculo: altas encadenadas, un lote de tres registros encadenados
+> entre sí en un mismo envío, una anulación, una rectificativa R1 sustitutiva y
+> una subsanación. Lo que sigue sin comprobarse es qué queda *anotado* después:
+> hace falta un cliente de `ConsultaLR`, y la AEAT no valida al recibir todo lo
+> que sí conserva. La API puede cambiar sin aviso.
 
 ## Qué es y qué no es
 
@@ -142,7 +144,9 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 - **El encadenamiento es estrictamente serial.** Rails procesa en paralelo: hace
   falta un lock a nivel de base de datos por SIF+NIF, no por serie ni por factura.
 - **Los números de factura anulada no se reutilizan.** La AEAT responde "Registro
-  de facturación duplicado".
+  de facturación duplicado". La excepción es la **subsanación**, que reusa el
+  mismo `IDFactura` a propósito: con `subsanacion: 'S'` el reenvío se anota como
+  corrección y no choca con el duplicado (comprobado contra preproducción).
 
 ## Tests
 

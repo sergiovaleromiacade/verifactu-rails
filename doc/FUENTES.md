@@ -376,3 +376,54 @@ caliente: hay control de flujo entre envíos y el portal desaconseja el uso masi
 repositorio). El segundo es el primero más un `ds:Signature` XAdES-EPES adosado,
 lo que confirma que la firma es un añadido opcional y no altera el resto del
 documento: coherente con implementar solo VERI\*FACTU.
+
+## Campaña contra preproducción: lote, anulación, rectificativa y subsanación
+
+Hasta aquí solo se habían probado contra el servicio real dos altas encadenadas.
+`examples/campana_pruebas.rb` cubre en cuatro envíos lo que quedaba, sobre una
+cadena limpia (instalación nueva = SIF virtual propio). Ejecutada el 07-08-2026,
+las cuatro fases salieron `EstadoEnvio=Correcto`, con todos los registros
+`Correcto`: ningún error admisible y ningún `RegistroDuplicado`.
+
+| Fase | Qué se envió | Resultado |
+|---|---|---|
+| lote | 3 altas F1 encadenadas ENTRE SÍ en un mismo envío | Correcto (3/3) |
+| anulacion | anulación de la 3ª del lote | Correcto |
+| rectificativa | R1 sustitutiva de la 2ª, con `ImporteRectificacion` | Correcto |
+| subsanacion | la 1ª otra vez, `Subsanacion="S"`, otros importes | Correcto |
+
+Lo que cada una resuelve:
+
+- **Un envío admite una cadena entera, no solo un eslabón.** La AEAT no exige una
+  petición por registro: los tres del lote se encadenaron entre sí dentro del
+  mismo `RegFactuSistemaFacturacion` y se anotaron los tres. Para la capa Rails
+  esto separa dos cosas que es fácil confundir: el **cálculo** de la cadena sigue
+  necesitando el lock por SIF+NIF, pero el **transporte** puede agrupar hasta
+  1000 registros por petición.
+- **`TiempoEsperaEnvio` no escala con el tamaño del lote**: 60 s tanto tras el
+  lote de tres como tras cada envío de uno. Agrupar sale, por tanto, mucho más
+  barato que encadenar peticiones: mismo coste de espera, más registros dentro.
+- **La huella de anulación es correcta.** Su serialización canónica no lleva
+  importes ni tipo de factura, solo IDFactura, fecha de generación y huella
+  anterior; nunca se había contrastado contra el recálculo de la AEAT.
+- **La R1 sustitutiva cuadra.** Se aceptó `TipoRectificativa='S'` +
+  `FacturasRectificadas` + `ImporteRectificacion` (base 100 / cuota 21) sobre un
+  desglose propio de 150 / 31,50. Las reglas de coherencia que impone la gema, y
+  que el XSD deja opcionales, no son más estrictas que la norma.
+- **`Subsanacion="S"` evita el rechazo por duplicado.** Se reenvió la primera
+  factura con el MISMO `IDFactura` (emisor, número de serie y fecha de
+  expedición) e importes distintos, y se anotó como `Correcto`, sin
+  `RegistroDuplicado` y sin error. Es la confirmación de que subsanar no es
+  reenviar: el mismo cuerpo sin la marca habría chocado con "Registro de
+  facturación duplicado".
+
+### Lo que esta campaña NO demuestra
+
+Que la AEAT acepte un envío no dice qué queda anotado. Es la misma cautela que
+obliga la cadena bifurcada (ver arriba): **no valida al recibir lo que sí
+conserva después**. En concreto, no se ha comprobado que la subsanación haya
+sustituido de verdad al registro original, ni que la anulación haya dejado la
+factura en estado "Anulada". Para eso hace falta un cliente de `ConsultaLR`, cuyo
+XSD ya está versionado pero que no está implementado. Mientras no exista, el
+alcance real de lo verificado es "la AEAT lo admite", no "la AEAT lo interpreta
+como esperamos".
