@@ -55,10 +55,11 @@ Fuera de alcance: Facturae/B2G, TicketBAI/Batuz, TPV.
 | `VerifactuRails::Transporte` | Cliente HTTP con TLS mutuo contra el endpoint correcto |
 | `VerifactuRails::QR` | URL de cotejo del código QR. La AEAT no la devuelve: la construye el SIF |
 | `VerifactuRails::Libro` | Capa Rails: libro registro append-only, encadenamiento bajo lock y autochequeo |
+| `VerifactuRails::Libro::Remesa` | Envío por lotes de lo pendiente, con control de flujo y reintentos |
 
 La capa `Libro` se carga aparte (`require 'verifactu_rails/libro'`) porque exige
-ActiveRecord; el núcleo no depende de Rails. Pendiente: el job de envío por lotes
-y el de reconciliación contra la consulta.
+ActiveRecord; el núcleo no depende de Rails. Pendiente: el job de reconciliación
+contra la consulta, y el generador (`rails g verifactu:install`).
 
 ### Rectificativas
 
@@ -215,7 +216,7 @@ Si no hay ninguna, la suite **aborta**; no se salta esos tests. Saltarlos los
 convertiría en cobertura fantasma: desaparecerían en silencio justo en los
 entornos mal configurados, que es donde más falta hacen.
 
-207 tests, ~1720 aserciones. Incluye verificación cruzada de la huella contra
+218 tests, ~1760 aserciones. Incluye verificación cruzada de la huella contra
 `josemmo/Verifactu-PHP` y `mybooking-es/verifactu-rb`, y validación del XML
 generado contra los XSD oficiales de la AEAT, versionados en
 [lib/verifactu_rails/schemas](lib/verifactu_rails/schemas/PROCEDENCIA.md).

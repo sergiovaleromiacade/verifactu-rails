@@ -36,6 +36,45 @@ module VerifactuRails
       validar_emisores!
     end
 
+    # Envío a partir de fragmentos XML ya construidos, en vez de a partir de los
+    # objetos.
+    #
+    # Es lo que usa la capa de persistencia: cada registro guardó su XML en el
+    # momento de anotarse, con su huella dentro, y al enviar se agrupan tal cual.
+    # Así lo que viaja es LITERALMENTE lo que se calculó bajo el lock, sin volver
+    # a derivar nada. Reconstruir el XML al enviar abriría la puerta a que la
+    # huella almacenada y la enviada divergieran, que es el peor fallo posible
+    # aquí: la AEAT recalcula sobre lo que recibe.
+    #
+    # @param fragmentos [Array<String>] elementos sum:RegistroFactura
+    def self.xml_desde_fragmentos(nif_obligado:, nombre_obligado:, fragmentos:)
+      if fragmentos.empty?
+        raise ValidacionError, 'El envío necesita al menos un registro'
+      end
+      if fragmentos.size > MAXIMO_REGISTROS
+        raise ValidacionError,
+              "Un envío admite como mucho #{MAXIMO_REGISTROS} registros " \
+              "(recibidos #{fragmentos.size}). Parte el lote."
+      end
+
+      nif = Formato.nif(nif_obligado, 'NIF del obligado')
+      nombre = Formato.limitar(nombre_obligado, 'NombreRazon del obligado', 120)
+
+      constructor = Nokogiri::XML::Builder.new(encoding: 'UTF-8') do |xml|
+        xml['sum'].RegFactuSistemaFacturacion('xmlns:sum' => NS_LR, 'xmlns:sum1' => NS_SF) do
+          xml['sum'].Cabecera do
+            xml['sum1'].ObligadoEmision do
+              xml['sum1'].NombreRazon nombre
+              xml['sum1'].NIF nif
+            end
+          end
+          # << inserta el markup tal cual, sin reinterpretarlo.
+          fragmentos.each { |fragmento| xml << fragmento }
+        end
+      end
+      constructor.to_xml
+    end
+
     def to_xml
       constructor = Nokogiri::XML::Builder.new(encoding: 'UTF-8') do |xml|
         xml['sum'].RegFactuSistemaFacturacion('xmlns:sum' => NS_LR, 'xmlns:sum1' => NS_SF) do
