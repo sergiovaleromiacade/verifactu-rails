@@ -2,9 +2,10 @@
 
 Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rails.
 
-> **Estado: en desarrollo, sin release público.** La capa Rails ya cierra el
-> ciclo: libro registro, encadenamiento bajo lock, autochequeo y envío por lotes.
-> Falta el generador y la reconciliación contra la consulta.
+> **Estado: en desarrollo, sin release público.** La capa Rails cierra el ciclo
+> —libro registro, encadenamiento bajo lock, autochequeo y envío por lotes— y ha
+> sido ejercitada contra el entorno de pruebas de la AEAT de punta a punta. Falta
+> el generador y la reconciliación contra la consulta.
 > El entorno de pruebas de la AEAT ha aceptado, con la huella validada por su
 > propio recálculo: altas encadenadas, un lote de tres registros encadenados
 > entre sí en un mismo envío, una anulación, una rectificativa R1 sustitutiva y

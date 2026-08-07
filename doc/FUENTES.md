@@ -670,3 +670,32 @@ un `NumeroInstalacion`**. Ni al arrancar, ni al ver que falta, ni por comodidad.
 Si lo hiciera, un contenedor que se recrea en cada despliegue produciría ese mismo
 patrón sin que nadie lo hubiera decidido. Abrir una instalación es un acto
 deliberado de quien despliega, y tiene que constar como tal.
+
+## La capa Rails, ejercitada contra el servicio real
+
+La campaña anterior probó el *protocolo* construyendo los registros a mano. Esto
+prueba el *código* que se va a usar: anotar bajo lock, guardar el fragmento XML,
+generar el QR y remitir por lotes leyendo de la base de datos. Ejecutado el
+07-08-2026 sobre una instalación nueva, dos altas encadenadas en un solo envío:
+
+```
+Correcto (2 registros en este envío: 2 anotados, 0 a subsanar, 0 rechazados)
+```
+
+Lo que confirma, por orden de importancia:
+
+- **Guardar el XML hecho, en vez de reconstruirlo al enviar, funciona.** El
+  `0 a subsanar` es la parte que importa: la AEAT recalculó la huella sobre lo que
+  recibió y cuadró. Cualquier deriva entre lo que se calculó al anotar y lo que se
+  envió después habría aparecido justo ahí, como error admisible escondido detrás
+  de un `Correcto`, y no como un fallo ruidoso.
+- **El lote con encadenamiento interno pasa leyendo de la tabla**, no solo
+  construido en memoria como en la campaña.
+- **El control de flujo funciona de punta a punta.** La segunda remesa devolvió
+  `:esperando` sin abrir conexión.
+
+Y un quinto dato de `TiempoEsperaEnvio`: el envío fue a las 17:59:42 UTC y la
+espera quedó en 18:00:42, o sea **60 s** otra vez. Con cinco medidas consistentes
+(lotes de 1, 2 y 3 registros) ya no parece casualidad, pero sigue siendo
+preproducción: no se ha medido en producción y la AEAT lo devuelve en cada
+respuesta precisamente porque puede variarlo.
