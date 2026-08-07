@@ -6,9 +6,9 @@ Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rai
 > El entorno de pruebas de la AEAT ha aceptado, con la huella validada por su
 > propio recálculo: altas encadenadas, un lote de tres registros encadenados
 > entre sí en un mismo envío, una anulación, una rectificativa R1 sustitutiva y
-> una subsanación. Lo que sigue sin comprobarse es qué queda *anotado* después:
-> hace falta un cliente de `ConsultaLR`, y la AEAT no valida al recibir todo lo
-> que sí conserva. La API puede cambiar sin aviso.
+> una subsanación. La consulta contra el servicio real confirma además qué queda
+> *anotado*: la subsanación sustituye al registro original y la anulación deja la
+> factura en estado `Anulado`. La API puede cambiar sin aviso.
 
 ## Qué es y qué no es
 
@@ -47,6 +47,7 @@ Fuera de alcance: Facturae/B2G, TicketBAI/Batuz, TPV.
 | `VerifactuRails::SistemaInformatico` | Identificación del SIF, obligatoria en cada registro |
 | `VerifactuRails::RegistroAlta` / `RegistroAnulacion` | El registro: calcula su huella y emite su XML |
 | `VerifactuRails::Envio` | Documento `RegFactuSistemaFacturacion` (lote de hasta 1000) |
+| `VerifactuRails::Consulta` / `RespuestaConsulta` | Consulta de lo ya anotado: estados, encadenamiento guardado y paginación |
 | `VerifactuRails::Certificado` | Carga de PKCS12, caducidad, detección de sello |
 | `VerifactuRails::Transporte` | Cliente HTTP con TLS mutuo contra el endpoint correcto |
 
@@ -143,6 +144,11 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
   Desactivar la comprobación nunca es el arreglo.
 - **El encadenamiento es estrictamente serial.** Rails procesa en paralelo: hace
   falta un lock a nivel de base de datos por SIF+NIF, no por serie ni por factura.
+- **La consulta devuelve una foto, no un libro.** Una fila por factura con su
+  estado actual, no el histórico de registros: si una factura se subsanó o se
+  anuló, su alta original ya no se devuelve. El histórico de la cadena hay que
+  guardarlo uno mismo; `ConsultaLR` sirve para reconciliar el estado de cada
+  factura, no para auditar el encadenamiento.
 - **Los números de factura anulada no se reutilizan.** La AEAT responde "Registro
   de facturación duplicado". La excepción es la **subsanación**, que reusa el
   mismo `IDFactura` a propósito: con `subsanacion: 'S'` el reenvío se anota como

@@ -427,3 +427,55 @@ factura en estado "Anulada". Para eso hace falta un cliente de `ConsultaLR`, cuy
 XSD ya está versionado pero que no está implementado. Mientras no exista, el
 alcance real de lo verificado es "la AEAT lo admite", no "la AEAT lo interpreta
 como esperamos".
+
+## Qué queda anotado de verdad: la consulta responde lo que el envío no puede
+
+Con el cliente de `ConsultaLR` se consultó la cadena de la campaña anterior
+(instalación `CAMP-20260807115225`, periodo 2026-08). Se habían enviado **6
+registros de facturación sobre 4 facturas**. La consulta devolvió **4 filas**,
+con `IndicadorPaginacion=N`: no faltaba nada por paginar.
+
+| Factura | Estado | Huella devuelta | De qué registro es |
+|---|---|---|---|
+| `/1` | Correcto, `Subsanacion=S` | `03EEC28D…` | la **subsanación** (el alta original era `42229E64…`) |
+| `/2` | Correcto | `2411E3DA…` | su alta, intacta |
+| `/3` | **Anulado** | `3A505BC9…` | la **anulación** (el alta original era `8584D092…`) |
+| `/R` | Correcto | `0CD38157…` | la rectificativa |
+
+### La consulta devuelve una foto, no un libro
+
+Una fila por **factura**, con su estado **actual**; no el histórico de registros
+de facturación. De ahí salen las tres conclusiones:
+
+- **La subsanación sustituye al original, no convive con él.** La factura `/1`
+  aparece una sola vez, con `ImporteTotal 133.1` (los importes corregidos, no los
+  121,00 del alta) y `TimestampUltimaModificacion` a la hora de la subsanación.
+  Esto cierra la pregunta que la respuesta al envío dejaba abierta: `Correcto` al
+  subsanar significa de verdad "he reemplazado el registro anterior".
+- **La anulación surte efecto.** `/3` queda en `Anulado`, un estado que
+  `RespuestaSuministro` ni siquiera puede expresar: sus tres valores son
+  Correcto, AceptadoConErrores e Incorrecto. Sin este servicio no hay forma de
+  observarlo.
+- **La cadena NO se puede reconstruir entera desde la consulta.** Es la cara B de
+  lo anterior: los eslabones sustituidos desaparecen. En esta consulta, `/2`
+  apunta a `42229E64…` (el alta original de `/1`) y la anulación apunta a
+  `8584D092…` (el alta original de `/3`); las dos huellas son correctas y la
+  cadena está intacta, pero sus eslabones ya no se devuelven, así que ambos
+  registros *parecen* huérfanos. Por lo mismo, la consulta informó de **cero**
+  registros marcados `PrimerRegistro`: el primero de la cadena era el alta de
+  `/1`, que fue sustituida.
+
+Corolario para la capa Rails: **el histórico de la cadena hay que guardarlo uno
+mismo**. La AEAT no lo devuelve, y la consulta sirve para reconciliar el estado
+de cada factura, no para auditar el encadenamiento. Detectar una bifurcación
+sigue dependiendo del propio SIF; el servicio de consulta no lo resuelve.
+
+### Detalles menores confirmados de paso
+
+- Las tres huellas que el diario de la campaña podía contrastar **coinciden** con
+  las almacenadas. Lo que construimos es lo que la AEAT guardó.
+- Los importes vuelven **sin ceros a la derecha**: `181.5`, `121`, `133.1`. Es el
+  mismo criterio que ya consta para la huella, y confirma que la exigencia no es
+  un formato concreto sino coherencia.
+- El orden de las filas **no es cronológico** (los `TimestampUltimaModificacion`
+  vuelven desordenados), así que no conviene apoyarse en él para nada.
