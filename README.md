@@ -2,7 +2,9 @@
 
 Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rails.
 
-> **Estado: en desarrollo, sin release público.** La capa Rails todavía no existe.
+> **Estado: en desarrollo, sin release público.** La capa Rails existe ya de
+> cintura para arriba: libro registro, encadenamiento bajo lock y autochequeo. Le
+> falta el envío por lotes.
 > El entorno de pruebas de la AEAT ha aceptado, con la huella validada por su
 > propio recálculo: altas encadenadas, un lote de tres registros encadenados
 > entre sí en un mismo envío, una anulación, una rectificativa R1 sustitutiva y
@@ -51,9 +53,12 @@ Fuera de alcance: Facturae/B2G, TicketBAI/Batuz, TPV.
 | `VerifactuRails::Consulta` / `RespuestaConsulta` | Consulta de lo ya anotado: estados, encadenamiento guardado y paginación |
 | `VerifactuRails::Certificado` | Carga de PKCS12, caducidad, detección de sello |
 | `VerifactuRails::Transporte` | Cliente HTTP con TLS mutuo contra el endpoint correcto |
+| `VerifactuRails::QR` | URL de cotejo del código QR. La AEAT no la devuelve: la construye el SIF |
+| `VerifactuRails::Libro` | Capa Rails: libro registro append-only, encadenamiento bajo lock y autochequeo |
 
-Pendiente: QR de cotejo, capa Rails (modelo append-only, job con lock por
-SIF+NIF).
+La capa `Libro` se carga aparte (`require 'verifactu_rails/libro'`) porque exige
+ActiveRecord; el núcleo no depende de Rails. Pendiente: el job de envío por lotes
+y el de reconciliación contra la consulta.
 
 ### Rectificativas
 
@@ -129,6 +134,44 @@ no es un formato concreto sino **coherencia entre la huella y el XML**.
 Cuando la AEAT rechace por huella, lo primero que hay que mirar no es el digest
 sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 
+## La capa Rails: el libro registro
+
+```ruby
+require 'verifactu_rails/libro'
+
+VerifactuRails::Libro.configure do |c|
+  c.productor_nombre = 'Tu Empresa SL'   # quién PRODUCE el software
+  c.productor_nif    = '89890001K'
+  c.nombre_sistema   = 'TuFactura'
+  c.id_sistema       = '01'
+  c.version          = TuApp::VERSION
+  c.entorno          = Rails.env.production? ? :produccion : :pruebas
+end
+
+# Una cadena por fuente de facturación. El nº de instalación NO se genera solo.
+cadena = VerifactuRails::Libro::Cadena.abrir!(
+  numero_instalacion: 'TIENDA-VALENCIA-20260807120000',
+  nif_obligado: '89890001K', nombre_obligado: 'Tu Empresa SL'
+)
+
+registro = cadena.anotar_alta!(id_emisor: '89890001K', num_serie: 'FA/2026/0001', ...)
+registro.qr_url   # ya disponible: el QR no depende de la AEAT
+```
+
+`anotar_alta!` calcula la huella, encadena y genera el QR **en una transacción con
+la fila de la cadena bloqueada**. Tres cosas que conviene entender:
+
+- **Bifurcar la cadena es imposible**, y no por el lock: por un índice único sobre
+  `(cadena_id, huella_anterior)`. Está comprobado que la AEAT acepta una cadena
+  bifurcada sin avisar, así que esa restricción es la única red que hay. Hay un
+  test con ocho hilos que lo demuestra quitando el lock.
+- **Una anomalía nunca interrumpe la facturación.** El autochequeo del art. 7.i)
+  de la Orden se anota en la columna `anomalias` y se notifica, pero no lanza. Con
+  datos inválidos sí se falla: ahí no hay factura que emitir tampoco.
+- **El número de instalación no se autogenera jamás.** Si la gema lo hiciera, un
+  contenedor que se recrea en cada despliegue abriría una instalación por
+  despliegue, y eso vacía de sentido el encadenamiento.
+
 ## Avisos de implementación
 
 - **`Float` está prohibido** en importes: se rechaza en la entrada. Usa
@@ -161,7 +204,7 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 bundle exec rake test
 ```
 
-146 tests, ~1540 aserciones. Incluye verificación cruzada de la huella contra
+207 tests, ~1720 aserciones. Incluye verificación cruzada de la huella contra
 `josemmo/Verifactu-PHP` y `mybooking-es/verifactu-rb`, y validación del XML
 generado contra los XSD oficiales de la AEAT, versionados en
 [lib/verifactu_rails/schemas](lib/verifactu_rails/schemas/PROCEDENCIA.md).
