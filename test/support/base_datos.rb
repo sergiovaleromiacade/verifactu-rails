@@ -1,47 +1,60 @@
 # frozen_string_literal: true
 
-# Los tests del libro registro necesitan una base de datos DE VERDAD: hay que
-# demostrar que un índice único impide bifurcar la cadena y que el lock serializa,
-# y eso no se puede simular con dobles.
+# Base de datos para los tests del libro registro.
 #
-# Se usa PostgreSQL por defecto. Si no hay ninguna accesible, los tests del libro
-# se saltan en vez de fallar: que alguien sin Postgres no pueda correr el resto de
-# la suite sería peor.
+# NO se salta si no la encuentra: aborta. Esto es una gema para Rails, y en Rails
+# siempre hay base de datos. Un `skip` convertiría veintitantos tests -entre ellos
+# los que demuestran que la cadena no se puede bifurcar- en cobertura fantasma:
+# desaparecerían en silencio en cualquier entorno mal configurado, que es
+# exactamente donde más falta hacen.
+#
+# Se usa, por este orden:
+#   1. La conexión que ya haya establecida (una app Rails, un initializer).
+#   2. VF_DATABASE_URL o DATABASE_URL.
+#   3. PostgreSQL local en verifactu_rails_test.
 module BaseDatos
-  # El pool tiene que dar para los hilos del test de concurrencia; si no, los
-  # hilos se serializan esperando conexión y el test no probaría nada.
-  URL = ENV['VF_DATABASE_URL'] || 'postgresql://localhost/verifactu_rails_test?pool=16'
+  # El pool tiene que dar para los hilos del test de concurrencia; si no, se
+  # serializan esperando conexión y ese test no probaría nada.
+  RESPALDO = 'postgresql://localhost/verifactu_rails_test?pool=16'
 
   module_function
 
-  def disponible?
-    return @disponible unless @disponible.nil?
-
-    @disponible = begin
-      require 'active_record'
-      ActiveRecord::Base.establish_connection(URL)
-      ActiveRecord::Base.connection.execute('select 1')
-      true
-    rescue StandardError => e
-      @motivo = e.message
-      false
-    end
-  end
-
-  def motivo = @motivo
+  def url = ENV['VF_DATABASE_URL'] || ENV['DATABASE_URL'] || RESPALDO
 
   def preparar!
-    return false unless disponible?
     return true if @preparada
 
+    require 'active_record'
+    conectar!
     require_relative '../../lib/verifactu_rails/libro'
-    silenciar do
-      VerifactuRails::Libro::Migracion.new.migrate(:down)
-    rescue StandardError
-      nil # la primera vez no hay nada que tirar
-    end
-    silenciar { VerifactuRails::Libro::Migracion.new.migrate(:up) }
+    migrar!
     @preparada = true
+  end
+
+  def conectar!
+    establecer_conexion_si_falta
+    ActiveRecord::Base.connection.execute('select 1')
+  rescue StandardError => e
+    abort(ayuda(e))
+  end
+
+  # Si quien ejecuta los tests ya tiene una conexión configurada, se respeta: es
+  # su base de datos, no la nuestra.
+  def establecer_conexion_si_falta
+    ActiveRecord::Base.connection_db_config
+  rescue StandardError
+    ActiveRecord::Base.establish_connection(url)
+  end
+
+  def migrar!
+    silenciar do
+      begin
+        VerifactuRails::Libro::Migracion.new.migrate(:down)
+      rescue StandardError
+        nil # la primera vez no hay nada que tirar
+      end
+      VerifactuRails::Libro::Migracion.new.migrate(:up)
+    end
   end
 
   def limpiar!
@@ -56,5 +69,25 @@ module BaseDatos
     yield
   ensure
     ActiveRecord::Migration.verbose = anterior
+  end
+
+  def ayuda(error)
+    <<~TXT
+
+      No se pudo conectar a la base de datos de tests.
+
+        Intentado: #{url}
+        Error:     #{error.class}: #{error.message.lines.first&.strip}
+
+      Los tests del libro registro necesitan una base de datos de verdad: hay que
+      demostrar que un índice único impide bifurcar la cadena y que el lock
+      serializa, y eso no se puede simular con dobles.
+
+      Para arreglarlo, una de dos:
+
+        createdb verifactu_rails_test
+        VF_DATABASE_URL=postgresql://usuario@host/otra_bd bundle exec rake test
+
+    TXT
   end
 end

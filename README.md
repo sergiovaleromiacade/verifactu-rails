@@ -201,8 +201,19 @@ la fila de la cadena bloqueada**. Tres cosas que conviene entender:
 ## Tests
 
 ```sh
+createdb verifactu_rails_test   # solo la primera vez
 bundle exec rake test
 ```
+
+Los tests del libro registro necesitan una base de datos **de verdad**: hay que
+demostrar que un índice único impide bifurcar la cadena y que el lock serializa, y
+eso no se simula con dobles. Se usa, por este orden, la conexión que ya haya
+establecida, `VF_DATABASE_URL` o `DATABASE_URL`, y si no PostgreSQL local en
+`verifactu_rails_test`.
+
+Si no hay ninguna, la suite **aborta**; no se salta esos tests. Saltarlos los
+convertiría en cobertura fantasma: desaparecerían en silencio justo en los
+entornos mal configurados, que es donde más falta hacen.
 
 207 tests, ~1720 aserciones. Incluye verificación cruzada de la huella contra
 `josemmo/Verifactu-PHP` y `mybooking-es/verifactu-rb`, y validación del XML

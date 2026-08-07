@@ -17,7 +17,7 @@ class ConcurrenciaTest < Minitest::Test
   HILOS = 8
 
   def setup
-    skip "Sin base de datos: #{BaseDatos.motivo}" unless BaseDatos.preparar!
+    BaseDatos.preparar!
     BaseDatos.limpiar!
     Libro.configure do |c|
       c.productor_nombre = 'Empresa SL'
