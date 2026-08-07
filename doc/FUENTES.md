@@ -586,3 +586,87 @@ comercio que factura cada diez minutos manda siempre un registro por petición y
 nunca agrupa; un TPV con mucho volumen agrupa solo porque le llegan más facturas
 de las que caben en una ventana. **El tamaño del lote es una consecuencia del
 ritmo de facturación, no una decisión.** El mismo código sirve para los dos.
+
+## Obligaciones del SIF que no se leen en el esquema (OM art. 7.i)
+
+Las FAQs (ap. 15) recogen el art. 7.i) de la Orden HAC/1177/2024, que impone dos
+comprobaciones **antes de generar cada registro** y que no se deducen de ningún
+XSD:
+
+> 1.º El último registro de facturación generado está correctamente encadenado.
+> 2.º La fecha y hora de generación del último registro de facturación generado
+> no es superior en más de un minuto a la fecha y hora actuales que se utilizarán
+> para fechar el registro de facturación a generar.
+
+Qué hay que comprobar exactamente en la primera, según las propias FAQs: que el
+campo `Huella` del `RegistroAnterior` del RF n-1 **se corresponde con la huella
+del RF n-2**. Es decir, se mira un eslabón hacia atrás, no la cadena entera.
+
+Sobre la segunda, la redacción confunde y las FAQs lo aclaran: lo normal es que
+pase mucho más de un minuto entre registros y **eso no es problema**. Lo que no se
+admite es que el registro que se va a generar tenga fecha y hora *anterior* en más
+de un minuto al ya generado. O sea: es un control de que el reloj no va hacia
+atrás, no de que factures rápido.
+
+### Y lo más importante: detectar una anomalía NO puede parar la caja
+
+> será preciso generar el siguiente RF, ya que la facturación por este motivo
+> **NUNCA debe interrumpirse**
+
+Es contraintuitivo para quien viene de programar validaciones: ante una cadena
+mal encadenada, el SIF **avisa y sigue facturando**. Lanzar una excepción dejaría
+a un comercio sin poder cobrar por un problema de trazabilidad, que es peor
+remedio que la enfermedad.
+
+Conviene no confundir dos clases de fallo:
+
+- **Datos inválidos del registro** (un tipo impositivo inexistente, un desglose
+  incoherente): no se puede generar el registro, y ahí sí hay que fallar. Con esos
+  datos tampoco se puede emitir la factura.
+- **Anomalía de trazabilidad** (el eslabón anterior no cuadra): se anota, se avisa
+  y se sigue. Nunca bloquea.
+
+Las FAQs añaden que el orden de generación debe seguir el orden cronológico de
+expedición, lo que encaja con serializar bajo lock.
+
+## La consulta también es el plan de recuperación ante desastre
+
+Si se pierde la base de datos local a mitad de año, el comercio **no queda
+vendido**, y hay dos salidas:
+
+1. **Recuperar el último eslabón desde la AEAT.** La consulta devuelve, de cada
+   registro, su `Huella` y su `FechaHoraHusoGenRegistro`. El de marca temporal
+   mayor es el último de la cadena, y con su `IDFactura` + `Huella` se reanuda.
+   Solo vale en modalidad VERI\*FACTU, que es donde la AEAT los conserva.
+2. **No recuperarlo: abrir instalación nueva.** Reinstalar exige un nº de
+   instalación nuevo (las FAQs lo dicen explícitamente incluso para el mismo
+   software en el mismo ordenador), y una instalación nueva arranca su propia
+   cadena con `PrimerRegistro="S"`.
+
+De aquí sale una idea que ordena bastante: **la cadena no es un hilo eterno del
+contribuyente, es por instalación**. Romperla no es un pecado irreparable; es
+motivo para abrir una instalación nueva. Lo que sí es irreparable es reutilizar un
+número de factura, y eso sí lo detecta la AEAT.
+
+### Corolario: la gema NUNCA debe generar un nº de instalación por su cuenta
+
+Si abrir una instalación nueva es gratis y legítimo, ¿qué impide sumar 1 al nº de
+instalación en cada factura y no encadenar nunca? **Técnicamente, nada**: cada
+registro saldría `PrimerRegistro="S"` y la AEAT lo aceptaría. Es el tercer caso del
+mismo patrón, junto con la cadena bifurcada y la huella incorrecta.
+
+Lo que lo impide no es técnico:
+
+- Las FAQs prohíben que la identidad del SIF cambie "con cada factura ni con cada
+  sesión o arranque del producto": se elige antes y permanece.
+- La trazabilidad es obligación legal del **productor**, no solo del usuario
+  (art. 29.2.j LGT), y certificar por declaración responsable un SIF que no cumple
+  el RD 1007/2023 es sancionable.
+- Y destruiría el valor para el propio comerciante: una cadena de longitud uno no
+  demuestra que nadie borró una factura, que es justo lo que la cadena le aporta.
+
+Consecuencia de diseño, y es una regla dura: **la capa Rails no autogenera nunca
+un `NumeroInstalacion`**. Ni al arrancar, ni al ver que falta, ni por comodidad.
+Si lo hiciera, un contenedor que se recrea en cada despliegue produciría ese mismo
+patrón sin que nadie lo hubiera decidido. Abrir una instalación es un acto
+deliberado de quien despliega, y tiene que constar como tal.
