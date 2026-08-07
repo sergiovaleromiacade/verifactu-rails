@@ -38,5 +38,15 @@ Gem::Specification.new do |spec|
   # ininstalable a verifactu-rb en Rails moderno.
   spec.add_dependency 'nokogiri', '~> 1.15'
 
+  # Lo usa la capa de persistencia (lib/verifactu_rails/libro): los modelos, la
+  # migración y el SELECT ... FOR UPDATE que serializa el encadenamiento. El
+  # núcleo -huella, XML, transporte, consulta, QR- no lo necesita.
+  #
+  # Rango ANCHO a propósito: en una app Rails ActiveRecord ya está, así que esto
+  # solo sirve para que Bundler compruebe la versión. Un `~> 7.0` se plantaría
+  # ante una app con Rails 8 sin motivo real, que es el mismo error que deja
+  # ininstalables a otras gemas del ramo.
+  spec.add_dependency 'activerecord', '>= 7.0', '< 9'
+
   # rqrcode entrará con el QR de cotejo. No se declara hasta que lib/ la use.
 end

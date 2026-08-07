@@ -1,7 +1,21 @@
 # frozen_string_literal: true
 
 require 'json'
-require 'active_record'
+
+begin
+  require 'active_record'
+rescue LoadError
+  raise LoadError, <<~TXT
+    verifactu_rails/libro necesita ActiveRecord y no se ha podido cargar.
+
+    La gema lo declara como dependencia, así que esto suele significar un bundle
+    a medias o que se ha copiado lib/ a mano. Con `bundle install` debería bastar.
+
+    Si lo que quieres es solo calcular huellas y generar XML, no cargues esta
+    capa: `require 'verifactu-rails'` no necesita ActiveRecord para nada.
+  TXT
+end
+
 require_relative '../verifactu-rails'
 
 module VerifactuRails

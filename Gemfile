@@ -9,9 +9,9 @@ group :development, :test do
   gem 'rake', '~> 13.0'
 end
 
-# Solo para la capa Rails (lib/verifactu_rails/libro) y sus tests. El núcleo no
-# depende de Rails: la gema no declara esto como dependencia de ejecución.
+# activerecord NO va aquí: es dependencia de ejecución y la declara el gemspec,
+# porque la capa Libro no funciona sin él. El adaptador sí es cosa del entorno:
+# la gema no debe imponer PostgreSQL ni MySQL, solo los tests eligen uno.
 group :development, :test do
-  gem 'activerecord', '~> 7.0'
   gem 'pg', '~> 1.5'
 end
