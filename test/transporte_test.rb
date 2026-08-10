@@ -72,7 +72,7 @@ class CertificadoTest < Minitest::Test
     casos = {
       '/CN=CERTIFICADO UNO TELEMATICAS - 89890001K/serialNumber=IDCES-89890001K' => '89890001K',
       '/CN=ACME SL/serialNumber=B12345674' => 'B12345674',
-      '/CN=JUAN PEREZ - 89890001K/O=ACME' => '89890001K'
+      '/CN=JUAN PEREZ - 89890002E/O=ACME' => '89890002E'
     }
     casos.each do |subject, esperado|
       cert, key = PKI.emitir(@ca_cert, @ca_key, subject: subject)
