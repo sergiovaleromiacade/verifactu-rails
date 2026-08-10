@@ -190,19 +190,75 @@ Solo lee: nunca corrige el libro. Los tipos de divergencia son `:no_consta`,
 El porqué de cada una, con lo que se comprobó contra el servicio real, está en
 [doc/FUENTES.md](doc/FUENTES.md).
 
-## Rectificativas
+## Tipos de factura
 
-`R1`–`R5` exigen `tipo_rectificativa:`. La diferencia importa:
+`tipo_factura:`. Las descripciones son literales del XSD oficial, que va
+versionado en el repo:
+
+| Clave | Qué es | Destinatario | Exige además |
+|---|---|---|---|
+| `F1` | Factura (art. 6, 7.2 y 7.3 del RD 1619/2012) | obligatorio | — |
+| `F2` | Factura simplificada y facturas sin identificación del destinatario (art. 6.1.d) | **prohibido** | — |
+| `F3` | Factura emitida en sustitución de facturas simplificadas facturadas y declaradas | obligatorio | `facturas_sustituidas:` (opcional) |
+| `R1` | Rectificativa (art. 80.1 y 80.2 y error fundado en derecho) | obligatorio | `tipo_rectificativa:` |
+| `R2` | Rectificativa (art. 80.3) | obligatorio | `tipo_rectificativa:` |
+| `R3` | Rectificativa (art. 80.4) | obligatorio | `tipo_rectificativa:` |
+| `R4` | Rectificativa (resto) | obligatorio | `tipo_rectificativa:` |
+| `R5` | Rectificativa en facturas simplificadas | **prohibido** | `tipo_rectificativa:` |
+
+La columna del destinatario no es un matiz: en `F2` y `R5` informarlo es un
+error, y en los demás omitirlo también. `facturas_rectificadas:` es opcional pero
+exclusiva de `R1`–`R5`, y `Cupon` solo se admite con `R1` o `R5`.
+
+### Rectificativas: sustitutiva o incremental
 
 - **`'S'` sustitutiva** — la factura reexpresa el importe corregido completo, así
   que hay que declarar el original en `importe_rectificacion:`.
-- **`'I'` incremental** — los importes ya son la diferencia, y
+- **`'I'` incremental** — los importes ya *son* la diferencia, y
   `importe_rectificacion:` se rechaza.
 
-`facturas_rectificadas:` es exclusiva de `R1`–`R5`; `facturas_sustituidas:`, de
-`F3`. El XSD deja casi todo opcional, así que estas reglas las impone la gema:
-sin ellas se monta un `R1` válido para el esquema que la AEAT rechaza con un
-error mucho menos claro.
+El XSD deja casi todos estos campos opcionales, así que estas reglas las impone
+la gema: sin ellas se monta un `R1` válido para el esquema que la AEAT rechaza
+con un error mucho menos claro.
+
+## Calificación de cada línea del desglose
+
+Cada `Detalle` lleva **o** `calificacion:` **o** `exenta:`, exactamente una. No es
+una preferencia de la gema: el esquema las modela como un `choice`, así que
+informar las dos —o ninguna— produce un documento inválido.
+
+| Clave | Qué significa |
+|---|---|
+| `S1` | Operación sujeta y no exenta, **sin** inversión del sujeto pasivo |
+| `S2` | Operación sujeta y no exenta, **con** inversión del sujeto pasivo |
+| `N1` | Operación no sujeta (art. 7, 14, otros) |
+| `N2` | Operación no sujeta por reglas de localización |
+
+```ruby
+# Lo normal: sujeta y no exenta, con su tipo y su cuota.
+Detalle.new(base_imponible: BigDecimal('100.00'), calificacion: 'S1',
+            tipo_impositivo: BigDecimal('21.00'),
+            cuota_repercutida: BigDecimal('21.00'))
+
+# Exenta: el importe va en base_imponible y NO se informa tipo ni cuota.
+Detalle.new(base_imponible: BigDecimal('100.00'), exenta: 'E1')
+```
+
+Tres reglas que conviene tener presentes, porque la AEAT tiene un código de error
+para cada una:
+
+- **`N1`, `N2` y las exentas no admiten** `tipo_impositivo:`, `cuota_repercutida:`
+  ni recargo. Informarlos da error 1237 o 1238.
+- **`S2` (inversión del sujeto pasivo) solo cabe en `F1`, `F3` y `R1`–`R4`.**
+- **`E7` y `E8` solo existen con IGIC.** Para IVA, las exenciones son `E1`–`E6`.
+  El XSD no describe qué supuesto es cada una; esa correspondencia está en la
+  normativa del IVA, no en la documentación técnica.
+
+`impuesto:` es `'01'` (IVA) por defecto —también hay `02` IPSI, `03` IGIC y `05`
+otros— y `clave_regimen:` es `'01'`. Los tipos impositivos admitidos y sus
+recargos se validan contra la fecha de la operación: el 5 %, el 2 % y el 7,5 %
+fueron rebajas temporales y hoy solo caben informando una `fecha_operacion:`
+dentro de su ventana.
 
 ## Componentes
 
