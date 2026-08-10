@@ -27,6 +27,11 @@ Gem::Specification.new do |spec|
     'lib/verifactu_rails/schemas/*.xsd',
     'lib/verifactu_rails/schemas/catalog.xml',
     'lib/verifactu_rails/schemas/PROCEDENCIA.md',
+    # Las plantillas del generador NO entran por 'lib/**/*.rb': van en .tt justo
+    # para que Rails no las confunda con código. Sin esta línea, `rails g
+    # verifactu:install` funciona desde el repo y falla instalado desde la gema,
+    # que es el fallo más difícil de ver venir.
+    'lib/generators/**/*.tt',
     'LICENSE',
     'README.md'
   ]

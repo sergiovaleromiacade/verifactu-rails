@@ -1,0 +1,19 @@
+# frozen_string_literal: true
+
+require 'verifactu_rails/libro'
+
+# Libro registro VERI*FACTU.
+#
+# El esquema no se copia aquí: se HEREDA de la gema. Así lo que ejecuta tu
+# db:migrate es exactamente el mismo esquema que ejercita la suite de tests de
+# verifactu-rails, incluidos los índices únicos que impiden bifurcar la cadena
+# (que son la única red que hay: está comprobado que la AEAT acepta una cadena
+# bifurcada sin avisar).
+#
+# El contrato que hace esto seguro: VerifactuRails::Libro::Migracion es el
+# esquema v1 y está CONGELADO. Ningún cambio futuro de la gema lo tocará; los
+# cambios de esquema llegarán como migraciones nuevas y aparte. Si no fuera así,
+# una app ya migrada y una instalación nueva acabarían con esquemas distintos sin
+# que nadie se enterara.
+class <%= migration_class_name %> < VerifactuRails::Libro::Migracion
+end

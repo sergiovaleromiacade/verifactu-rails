@@ -5,7 +5,7 @@ Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rai
 > **Estado: en desarrollo, sin release público.** La capa Rails cierra el ciclo
 > —libro registro, encadenamiento bajo lock, autochequeo y envío por lotes— y ha
 > sido ejercitada contra el entorno de pruebas de la AEAT de punta a punta. Falta
-> el generador y la reconciliación contra la consulta.
+> la reconciliación contra la consulta.
 > El entorno de pruebas de la AEAT ha aceptado, con la huella validada por su
 > propio recálculo: altas encadenadas, un lote de tres registros encadenados
 > entre sí en un mismo envío, una anulación, una rectificativa R1 sustitutiva y
@@ -35,9 +35,47 @@ Fuera de alcance: Facturae/B2G, TicketBAI/Batuz, TPV.
 ## Requisitos
 
 - Ruby >= 3.0
-- Certificado del obligado tributario en formato PKCS12. Se **recomienda
-  certificado de sello de entidad** antes que el de representante: menor radio de
-  explosión si se filtra, y la AEAT le asigna endpoints propios.
+- Certificado del obligado tributario en formato PKCS12. Vale el de
+  representante, que es el camino contrastado contra el servicio real.
+- El **certificado de sello de entidad** también está soportado: la AEAT le
+  asigna endpoints propios y `Transporte` los elige solo. Con él, declara
+  `sello: true` de forma explícita en vez de fiarte de la detección automática,
+  que adivina a partir del sujeto del certificado y no se ha podido contrastar
+  con un sello real (la AEAT no emite certificados de prueba).
+
+## Instalación
+
+```ruby
+# Gemfile
+gem 'verifactu-rails'
+```
+
+```sh
+rails g verifactu:install
+rails db:migrate
+```
+
+El generador deja dos ficheros:
+
+- **`db/migrate/…_instalar_verifactu.rb`**, que no copia el esquema: hereda de
+  `VerifactuRails::Libro::Migracion`. Así lo que ejecuta tu `db:migrate` es
+  exactamente el esquema que ejercita la suite de tests de la gema, índices
+  únicos incluidos. Esa clase está congelada como esquema v1 por ese motivo:
+  cualquier cambio futuro llegará como migración nueva, nunca editándola.
+- **`config/initializers/verifactu.rb`**, con la identificación de tu SIF. Los
+  valores vienen inválidos a propósito: con ellos el primer `anotar_alta!`
+  levanta una `ValidacionError` en vez de remitir a la AEAT una identificación
+  de sistema inventada.
+
+Lo que el generador **no** hace, y no es un olvido:
+
+- **No abre ninguna cadena.** El `NumeroInstalacion` no se autogenera en ninguna
+  parte de esta gema. Un contenedor que se recrea en cada despliegue acabaría
+  abriendo una instalación por despliegue, y eso vacía de sentido el
+  encadenamiento.
+- **No decide dónde vive tu certificado.** `Certificado` recibe los bytes ya
+  cargados y no sabe leer ficheros ni variables de entorno: dónde se guarda la
+  credencial es una decisión de quien despliega, no de una plantilla.
 
 ## Componentes
 
@@ -59,8 +97,9 @@ Fuera de alcance: Facturae/B2G, TicketBAI/Batuz, TPV.
 | `VerifactuRails::Libro::Remesa` | Envío por lotes de lo pendiente, con control de flujo y reintentos |
 
 La capa `Libro` se carga aparte (`require 'verifactu_rails/libro'`) porque exige
-ActiveRecord; el núcleo no depende de Rails. Pendiente: el job de reconciliación
-contra la consulta, y el generador (`rails g verifactu:install`).
+ActiveRecord; el núcleo no depende de Rails. En una app Rails ese require sobra:
+lo hace el railtie en cuanto ActiveRecord está listo. Pendiente: el job de
+reconciliación contra la consulta.
 
 ### Rectificativas
 
@@ -139,7 +178,8 @@ sino la cadena que lo produce, que `Huella.serializar` expone tal cual.
 ## La capa Rails: el libro registro
 
 ```ruby
-require 'verifactu_rails/libro'
+# En Rails esto lo deja hecho `rails g verifactu:install` y el require sobra.
+# Fuera de Rails: require 'verifactu_rails/libro'
 
 VerifactuRails::Libro.configure do |c|
   c.productor_nombre = 'Tu Empresa SL'   # quién PRODUCE el software
@@ -150,15 +190,36 @@ VerifactuRails::Libro.configure do |c|
   c.entorno          = Rails.env.production? ? :produccion : :pruebas
 end
 
-# Una cadena por fuente de facturación. El nº de instalación NO se genera solo.
-cadena = VerifactuRails::Libro::Cadena.abrir!(
+```
+
+Una cadena se abre **una sola vez** por fuente de facturación y se queda en la
+base de datos. No es configuración: es un dato. Va en un `db/seeds.rb`, en una
+tarea rake de alta de tienda o en tu panel de administración, nunca en un
+initializer ni en el camino de la factura.
+
+```ruby
+# UNA VEZ, al dar de alta la tienda/TPV/sede. El nº de instalación NO se genera
+# solo y no se reutiliza JAMÁS, ni al reinstalar en la misma máquina.
+VerifactuRails::Libro::Cadena.abrir!(
   numero_instalacion: 'TIENDA-VALENCIA-20260807120000',
   nif_obligado: '89890001K', nombre_obligado: 'Tu Empresa SL'
+)
+```
+
+A partir de ahí, en cada factura se **recupera** esa cadena, no se abre otra:
+
+```ruby
+cadena = VerifactuRails::Libro::Cadena.find_by!(
+  numero_instalacion: tienda.numero_instalacion
 )
 
 registro = cadena.anotar_alta!(id_emisor: '89890001K', num_serie: 'FA/2026/0001', ...)
 registro.qr_url   # ya disponible: el QR no depende de la AEAT
 ```
+
+Guarda el `numero_instalacion` en tu propio modelo (la tienda, el TPV, la
+empresa) y búscala por ahí. Si tu instalación es única, `Cadena.sole` sirve y
+además te avisa si algún día deja de serlo, cosa que `first` no hace.
 
 `anotar_alta!` calcula la huella, encadena y genera el QR **en una transacción con
 la fila de la cadena bloqueada**. Tres cosas que conviene entender:
@@ -177,10 +238,37 @@ la fila de la cadena bloqueada**. Tres cosas que conviene entender:
 ### Enviar
 
 ```ruby
-transporte = VerifactuRails::Transporte.new(certificado: cert, entorno: :pruebas)
-VerifactuRails::Libro::Remesa.new(cadena, transporte: transporte).enviar!
-# => #<Resultado estado: :enviado|:esperando|:nada_pendiente|:bloqueada_por_rechazo>
+class EnviarRemesaJob < ApplicationJob
+  def perform(numero_instalacion)
+    cadena = VerifactuRails::Libro::Cadena.find_by!(numero_instalacion: numero_instalacion)
+
+    # Certificado y transporte se construyen AQUÍ, no una vez al arrancar.
+    certificado = VerifactuRails::Certificado.desde_pkcs12(bytes_del_p12, password)
+    transporte  = VerifactuRails::Transporte.new(certificado: certificado,
+                                                 entorno: VerifactuRails::Libro.configuracion.entorno)
+
+    VerifactuRails::Libro::Remesa.new(cadena, transporte: transporte).enviar!
+    # => #<Resultado estado: :enviado|:esperando|:nada_pendiente|:bloqueada_por_rechazo>
+  end
+end
 ```
+
+La remesa no recibe registros: coge de la base de datos lo que esa cadena tenga
+pendiente. Por eso lo único que hay que pasarle es la cadena, recuperada por su
+número de instalación.
+
+Sobre construir el transporte en cada envío, que parece derrochón y no lo es:
+**`Transporte` no guarda ninguna conexión**. Abre un `Net::HTTP` nuevo dentro de
+cada `enviar`, así que reutilizar el objeto no ahorra un solo handshake —el mTLS
+completo se paga igual— y solo conseguirías compartir estado entre hilos. El
+handshake, además, es uno por *remesa*, no por factura: el lote entero va en una
+petición.
+
+Con el certificado el razonamiento es el mismo pero por otro motivo: `Certificado`
+comprueba la caducidad **al construirse**. Cachearlo al arrancar un proceso que
+vive meses es justo lo que hace que el día que caduque no te avise esa
+comprobación, sino un error TLS de la AEAT, que orienta mucho peor. Parsear el
+PKCS12 cuesta milisegundos; el aviso vale más.
 
 Llámalo desde un job encolado tras `anotar_alta!`, y también desde un cron de
 seguridad por si un job se perdió. Es idempotente: reenviar algo ya anotado

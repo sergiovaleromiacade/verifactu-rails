@@ -24,3 +24,8 @@ require_relative 'verifactu_rails/transporte'
 # registro de eventos.
 module VerifactuRails
 end
+
+# Solo si hay Rails delante. El núcleo funciona suelto y así debe seguir: esto
+# no lo carga, únicamente engancha la capa Libro a ActiveRecord y deja que Rails
+# descubra `rails g verifactu:install`.
+require_relative 'verifactu_rails/railtie' if defined?(Rails::Railtie)

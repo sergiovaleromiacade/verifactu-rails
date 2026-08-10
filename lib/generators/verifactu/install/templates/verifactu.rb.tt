@@ -1,0 +1,64 @@
+# frozen_string_literal: true
+
+# Identificación del SISTEMA INFORMÁTICO DE FACTURACIÓN, que viaja en CADA
+# registro remitido a la AEAT.
+#
+# Describe al SIF que despliegas TÚ, no a esta gema: verifactu-rails es un
+# componente de tu sistema de facturación, no el sistema.
+#
+# LOS VALORES DE ABAJO SON INVÁLIDOS A PROPÓSITO. Con ellos, el primer
+# `anotar_alta!` levanta una ValidacionError antes de construir nada. Es
+# preferible a un valor de relleno plausible, que se remitiría a la AEAT como
+# identificación real de tu sistema.
+#
+# Va dentro de `on_load(:active_record)` porque la capa Libro se carga con
+# ActiveRecord, no antes: el núcleo de la gema no depende de Rails y se sigue
+# pudiendo usar suelto.
+#
+# AQUÍ NO SE ABRE NINGUNA CADENA. Esto es configuración; una cadena es un dato, y
+# `Cadena.abrir!` va en un seed, en una tarea rake de alta de tienda o en tu
+# panel de administración, una sola vez y a conciencia. Ponerlo en este fichero
+# rompe de dos maneras: el segundo arranque choca contra el índice único de
+# numero_instalacion, y un initializer que consulta la base de datos revienta
+# donde todavía no la hay (assets:precompile, db:create, un contenedor de CI).
+ActiveSupport.on_load(:active_record) do
+  VerifactuRails::Libro.configure do |c|
+    # Quién PRODUCE el software. Si lo has desarrollado tú para tu propio uso,
+    # eres tú; si lo vendes, eres tú igualmente (no tu cliente).
+    c.productor_nombre = 'CAMBIAME: razón social del productor'
+    c.productor_nif    = 'CAMBIAME'
+
+    # Nombre comercial del SIF (máx. 30 caracteres).
+    c.nombre_sistema = 'CAMBIAME'
+
+    # IdSistemaInformatico: EXACTAMENTE dos posiciones, mayúscula (sin Ñ) o
+    # dígito. Distingue entre sí los sistemas de un mismo productor.
+    c.id_sistema = 'CAMBIAME'
+
+    # Versión del SIF (máx. 50). Tiene que cambiar cuando cambie el sistema:
+    # es lo que permite a la AEAT saber qué versión emitió cada registro.
+    c.version = 'CAMBIAME'
+
+    # Preproducción hasta que esto vaya en serio. Aviso de la propia AEAT: el
+    # entorno de pruebas es para pruebas PUNTUALES, no para carga.
+    c.entorno = Rails.env.production? ? :produccion : :pruebas
+
+    # ¿Puede este SIF usarse para VARIOS obligados tributarios? Y, si puede,
+    # ¿se está usando así ahora mismo? Declarar `multiples_ot` sin `multi_ot`
+    # es incoherente y la gema lo rechaza.
+    c.multi_ot     = false
+    c.multiples_ot = false
+
+    # Anomalías de trazabilidad del art. 7.i) de la Orden HAC/1177/2024.
+    #
+    # NO interrumpen la facturación: la norma dice que ante una anomalía la
+    # facturación "nunca debe interrumpirse". Se anotan en el registro y se
+    # avisan por aquí. Por defecto no se hace nada, que en la práctica es
+    # perderlas: mándalas a donde de verdad las vayas a mirar.
+    c.al_detectar_anomalia = lambda do |anomalias, registro|
+      Rails.logger.warn(
+        "[verifactu] anomalías #{anomalias.inspect} en el registro #{registro.id}"
+      )
+    end
+  end
+end

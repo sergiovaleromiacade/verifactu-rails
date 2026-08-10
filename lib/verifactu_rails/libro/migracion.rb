@@ -6,6 +6,13 @@ module VerifactuRails
     # generador de Rails y también la suite de tests, para que lo que se prueba
     # sea exactamente lo que se instala.
     #
+    # ESTA CLASE ESTÁ CONGELADA. Es el esquema v1 y no se toca nunca más. La
+    # migración que `rails g verifactu:install` deja en la app no copia el
+    # esquema: hereda de aquí. Eso significa que cambiarlo mutaría el pasado —
+    # una app que ya migró se quedaría con el esquema viejo mientras una
+    # instalación nueva estrena el nuevo, las dos convencidas de estar al día.
+    # Los cambios de esquema van en migraciones NUEVAS y aparte.
+    #
     # Portable a PostgreSQL y MySQL: nada de índices parciales, de jsonb ni de
     # tipos propios de un motor. Lo único que se exige de la base de datos es que
     # sepa bloquear filas (SELECT ... FOR UPDATE) y respetar índices únicos.
