@@ -251,14 +251,57 @@ para cada una:
   ni recargo. Informarlos da error 1237 o 1238.
 - **`S2` (inversión del sujeto pasivo) solo cabe en `F1`, `F3` y `R1`–`R4`.**
 - **`E7` y `E8` solo existen con IGIC.** Para IVA, las exenciones son `E1`–`E6`.
-  El XSD no describe qué supuesto es cada una; esa correspondencia está en la
-  normativa del IVA, no en la documentación técnica.
 
-`impuesto:` es `'01'` (IVA) por defecto —también hay `02` IPSI, `03` IGIC y `05`
-otros— y `clave_regimen:` es `'01'`. Los tipos impositivos admitidos y sus
-recargos se validan contra la fecha de la operación: el 5 %, el 2 % y el 7,5 %
-fueron rebajas temporales y hoy solo caben informando una `fecha_operacion:`
-dentro de su ventana.
+### Causas de exención
+
+El XSD las lleva desnudas, sin descripción. La correspondencia es esta, en
+palabras de la propia AEAT, y los artículos son de la Ley 37/1992 del IVA:
+
+| Clave | Texto de la AEAT | De qué trata ese artículo |
+|---|---|---|
+| `E1` | *exenta por el artículo 20* | Exenciones en operaciones interiores |
+| `E2` | *exenta por el artículo 21* | Exportaciones de bienes |
+| `E3` | *exenta por el artículo 22* | Operaciones asimiladas a las exportaciones |
+| `E4` | *exenta por los artículos 23 y 24* | Zonas y depósitos francos, regímenes aduaneros y fiscales |
+| `E5` | *exenta por el artículo 25* | Entregas intracomunitarias |
+| `E6` | *exenta por otros* | El resto |
+
+La AEAT añade que **si no se dispone de esa información basta con indicar que la
+operación es exenta**. Ojo: eso vale para el libro registro, pero el esquema de
+VERI\*FACTU exige un valor concreto en `OperacionExenta`, así que en la práctica
+hay que elegir uno; `E6` es el cajón previsto para ello.
+
+El mapeo sale de la documentación del SII, que comparte esta lista de códigos,
+porque la documentación técnica de VERI\*FACTU no la desarrolla. Las FAQs de la
+propia AEAT sobre el libro registro lo corroboran para los dos casos que citan
+con nombre: exportaciones (`E2`) y entregas intracomunitarias (`E5`).
+
+### Impuesto, régimen y tipos
+
+`impuesto:` es `'01'` (IVA) por defecto; también hay `02` IPSI, `03` IGIC y `05`
+otros. Con `05` la clave de régimen no se puede informar en absoluto.
+`clave_regimen:` es `'01'` por defecto.
+
+Los tipos impositivos de IVA y el recargo de equivalencia que admite cada uno se
+validan contra la fecha de la operación:
+
+| Tipo | Recargo de equivalencia admitido | Vigencia del tipo |
+|---|---|---|
+| `21.00` | `5.20` o `1.75` | siempre |
+| `10.00` | `1.40` | siempre |
+| `4.00` | `0.50` | siempre |
+| `0.00` | `0.00`, y solo entre 01-01-2023 y 30-09-2024 | siempre |
+| `5.00` | `0.50` hasta 31-12-2022; `0.62` desde 01-01-2023 | **01-07-2022 – 30-09-2024** |
+| `2.00` | `0.26` | **01-10-2024 – 31-12-2024** |
+| `7.50` | `1.00` | **01-10-2024 – 31-12-2024** |
+
+Las dos columnas se validan por separado: un tipo puede estar vigente y aun así
+rechazarse el recargo que le acompañe.
+
+Los tres marcados fueron rebajas temporales. Y aquí hay una consecuencia que
+sorprende: como `FechaExpedicionFactura` no puede ser anterior al 28-10-2024,
+**el 5 % ya no es declarable** salvo que informes una `fecha_operacion:` dentro
+de su ventana. Es el origen de los errores 1235 y 1236 de la AEAT.
 
 ## Componentes
 
