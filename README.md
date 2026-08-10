@@ -292,8 +292,42 @@ Detalle.new(base_imponible: BigDecimal('50.00'), calificacion: 'S1',
 
 Cada línea acaba en su propio `<DetalleDesglose>` con su `<Impuesto>`, así que
 **una misma factura puede mezclar impuestos**. Los valores son `01` IVA, `02`
-IPSI, `03` IGIC y `05` otros; con `05` la clave de régimen no se puede informar
-en absoluto.
+IPSI, `03` IGIC y `05` otros.
+
+### Clave de régimen
+
+Y aquí está la trampa: **qué significa `clave_regimen:` depende del impuesto**.
+Las claves `18`, `19` y `20` no quieren decir lo mismo en IVA que en IPSI, así
+que copiar un valor de un ejemplo de IVA a una línea de IPSI declara otra cosa.
+
+Qué admite cada impuesto (la gema lo valida y rechaza el resto):
+
+| Impuesto | Claves admitidas |
+|---|---|
+| `01` IVA | `01`–`11`, `14`, `15`, `17`, `18`, `19`, `20` (lista L8A) |
+| `03` IGIC | las de L8A más `20` (operaciones sujetas al IPSI) y `21` (régimen simplificado) |
+| `02` IPSI | solo `01`, `08`, `11`, `18`, `19`, `20`, y con significado propio |
+| `05` Otros | **ninguna**: el campo no se puede informar en absoluto |
+
+Las de IPSI, en palabras de la AEAT: `01` régimen general, `08` operaciones
+sujetas al IGIC/IVA, `11` arrendamiento de local de negocio, `18` operaciones del
+art. 73.4 y 5 de la Ordenanza fiscal IPSI (solo Ceuta), `19` operaciones
+interiores exentas y `20` régimen de estimación objetiva.
+
+Para IVA las más frecuentes son `01` régimen general, `02` exportación, `07`
+criterio de caja, `11` arrendamiento de local de negocio sujeto a retención y
+`18` recargo de equivalencia. La lista completa con su descripción es la L8A de
+los Diseños de registro de la AEAT; aquí no se reproduce entera porque cambia con
+las versiones y no queremos una copia que envejezca en silencio.
+
+**Aviso de alcance.** La gema comprueba que la clave sea admisible para el
+impuesto, que esté informada cuando toca y que no lo esté con `05`. Lo que **no**
+comprueba son las reglas que atan cada clave concreta con la calificación
+(Validaciones ap. 15.6.1 a 15.6.11): que con `02` solo quepa `OperacionExenta`,
+que con `04` la calificación sea `S2` o exenta, que con `08` sea `N2`, y demás.
+Esas las valida la AEAT al recibir, así que un desglose incoherente pasa el
+control local y se lo encuentra el servicio. Está anotado en
+[doc/FUENTES.md](doc/FUENTES.md).
 
 Los tipos impositivos de IVA y el recargo de equivalencia que admite cada uno se
 validan contra la fecha de la operación:

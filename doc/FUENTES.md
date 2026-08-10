@@ -81,7 +81,8 @@ reproducen exactamente, encadenamiento incluido.
 | 15.1 | Ventanas temporales de `TipoImpositivo` | `Detalle#validar_en_fecha!` |
 | 15.3 | El recargo de equivalencia tiene que cuadrar con el tipo impositivo | ídem |
 | 15.4 | `CalificacionOperacion` S2 solo en F1/F3/R1-R4 | `#validar_inversion_sujeto_pasivo!` |
-| 15.4-15.7 | Coherencia de `Calificacion`, `OperacionExenta`, `ClaveRegimen` y recargo | `Detalle#validar_coherencia!` |
+| 15.4-15.7 | Coherencia de `Calificacion`, `OperacionExenta` y recargo | `Detalle#validar_coherencia!` |
+| 15.6 | `ClaveRegimen`: obligatoria con IVA/IPSI/IGIC, prohibida con Otros, y contenida en la lista que corresponda al impuesto | `Detalle#validar_clave_regimen!` |
 
 Tres cosas que conviene entender:
 
@@ -104,8 +105,21 @@ porque los tipos se reparten entre los que exigen destinatario y los que lo
 prohíben. Escribirla habría dejado una comprobación incapaz de fallar, que
 aparenta cobertura sin cubrir nada.
 
-**Sin implementar**: ap. 15.2 `BaseImponibleACoste`, porque el campo no está
-soportado por la gema.
+**Sin implementar**:
+
+- **Ap. 15.2 `BaseImponibleACoste`**, porque el campo no está soportado por la
+  gema.
+- **Ap. 15.6.1 a 15.6.11**, las reglas que atan cada `ClaveRegimen` concreta con
+  la calificación de la línea: que con `02` solo quepa `OperacionExenta`, que con
+  `03` la calificación solo pueda ser `S1`, que con `04` sea `S2` o exenta, que
+  con `06` el `TipoFactura` no sea F2/F3/R5 y `BaseImponibleACoste` esté relleno,
+  que con `08` y con `20` en IGIC sea `N2`, y las de `07`, `10`, `11` y `14`. De
+  la 15.6 solo está la pertenencia a la lista según el impuesto, la
+  obligatoriedad y la prohibición con `Impuesto=05`.
+
+  Consecuencia: un desglose que viole cualquiera de esas reglas **pasa el control
+  local** y lo rechaza la AEAT. La de `06` no se puede implementar entera sin
+  soportar antes `BaseImponibleACoste`.
 
 **[doc] Otros errores admisibles** (se aceptan, obligan a subsanar): `ImporteTotal`
 o `CuotaTotal` que no cuadran con el desglose, con margen de ±10,00 € (no aplica
