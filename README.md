@@ -278,9 +278,22 @@ con nombre: exportaciones (`E2`) y entregas intracomunitarias (`E5`).
 
 ### Impuesto, régimen y tipos
 
-`impuesto:` es `'01'` (IVA) por defecto; también hay `02` IPSI, `03` IGIC y `05`
-otros. Con `05` la clave de régimen no se puede informar en absoluto.
-`clave_regimen:` es `'01'` por defecto.
+`impuesto:` y `clave_regimen:` van **en cada línea del desglose**, no en la
+factura: son parámetros de `Detalle`. En los ejemplos de arriba no se ven porque
+tienen valor por defecto —`'01'` en los dos, IVA y régimen general—, que es el
+caso normal. Explícitos:
+
+```ruby
+Detalle.new(base_imponible: BigDecimal('50.00'), calificacion: 'S1',
+            impuesto: '03', clave_regimen: '01',        # IGIC
+            tipo_impositivo: BigDecimal('7.00'),
+            cuota_repercutida: BigDecimal('3.50'))
+```
+
+Cada línea acaba en su propio `<DetalleDesglose>` con su `<Impuesto>`, así que
+**una misma factura puede mezclar impuestos**. Los valores son `01` IVA, `02`
+IPSI, `03` IGIC y `05` otros; con `05` la clave de régimen no se puede informar
+en absoluto.
 
 Los tipos impositivos de IVA y el recargo de equivalencia que admite cada uno se
 validan contra la fecha de la operación:
