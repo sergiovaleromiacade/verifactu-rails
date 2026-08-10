@@ -161,17 +161,18 @@ de los enumerados que las Validaciones citan sin desarrollar:
 | L16 | `GeneradoPor` | E expedidor, D destinatario, T tercero |
 | L17 | `RechazoPrevio` | N, S, X |
 
-L10 confirma que **E7 y E8 solo se admiten con IGIC**; `Detalle::EXENCIONES` los
-incluye siempre y es por tanto demasiado permisiva.
+L10 confirma que **E7 y E8 solo se admiten con IGIC**, y así lo hace `Detalle`:
+`EXENCIONES` es E1–E6 y `EXENCIONES_IGIC` añade las dos, según el impuesto de la
+línea.
 
 `ClaveRegimen = 21` no aparece en L8A ni L8B pero sí en el XSD y en el ap. 15.6.11
 de Validaciones. El Excel es v1.0 y Validaciones v1.2.2: se sigue a la más
 reciente.
 
-## Alcance no cubierto: las operativas de subsanación y rechazo
+## Las operativas de subsanación y rechazo
 
-**[doc]** Los cuadros de operativa del Excel definen **seis operativas de alta y
-cuatro de anulación**, cada una distinguida por una combinación de campos:
+**[doc]** Los cuadros de operativa del Excel definen las variantes de alta y de
+anulación, cada una distinguida por una combinación de campos:
 
 | Operativa de alta | `Subsanacion` | `RechazoPrevio` |
 |---|---|---|
@@ -180,13 +181,17 @@ cuatro de anulación**, cada una distinguida por una combinación de campos:
 | Alta por rechazo de subsanación | S | S |
 | Alta por rechazo / sin registro previo | S | X |
 
-La gema **solo construye la primera fila de cada cuadro**, y eso importa más de lo
-que parece: como una huella que no cuadra es error admisible y obliga a subsanar,
-quien reciba un `AceptadoConErrores` no tiene forma de corregirlo con esta gema.
-El mecanismo de corrección entero depende de estos campos.
+Las de anulación combinan `SinRegistroPrevio` y `RechazoPrevio` del mismo modo.
 
-`RechazoPrevio = X` es además el camino de migración desde NO VERI\*FACTU:
-registros que existen en el SIF pero nunca se remitieron.
+**Las construye todas**: `RegistroAlta` admite `subsanacion:` y
+`rechazo_previo:`, y `RegistroAnulacion` admite `sin_registro_previo:` y
+`rechazo_previo:`. Importa porque una huella que no cuadra es error admisible y
+**obliga a subsanar**: sin estos campos, quien recibiera un `AceptadoConErrores`
+no tendría con qué corregirlo. La subsanación está además contrastada contra el
+servicio real (ver más abajo).
+
+`RechazoPrevio = X` es el camino de migración desde NO VERI\*FACTU: registros que
+existen en el SIF pero nunca se remitieron.
 
 ## Endpoints, TLS y certificados
 
