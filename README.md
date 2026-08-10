@@ -175,7 +175,10 @@ Solo lee: nunca corrige el libro. Los tipos de divergencia son `:no_consta`,
   demora apreciable"; el tope de 1000 por envío es un techo para quien factura
   rápido, no un objetivo.
 - **`Float` está prohibido** en importes: usa `BigDecimal`, `Integer` o `String`.
-  El redondeo es `ROUND_HALF_UP`, no el bancario de Ruby.
+  La huella se calcula sobre el string del importe y la AEAT la recalcula sobre
+  el XML, así que el importe tiene que ser exacto y su formateo determinista;
+  `Float` no da ninguna de las dos cosas. El redondeo se fija explícitamente a
+  `ROUND_HALF_UP` porque `BigDecimal.mode` es estado global del proceso.
 - **Los espacios al borde se rechazan**, no se recortan. Es más estricto que la
   norma a propósito: casi siempre son un defecto de los datos de origen.
 - **Nunca `VERIFY_NONE`.** Desde noviembre de 2025 la AEAT sirve con CA públicas,

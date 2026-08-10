@@ -34,8 +34,13 @@ module VerifactuRails
         raise ValidacionError, "Tipo de importe no admitido: #{valor.class}"
       end
 
-      # ROUND_HALF_UP: el redondeo bancario (HALF_EVEN) de Ruby por defecto
-      # no es el que aplica la normativa fiscal española.
+      # ROUND_HALF_UP explícito, y NO porque Ruby traiga otro por defecto: el
+      # suyo ya es HALF_UP, tanto en BigDecimal.mode como en Float#round. El
+      # motivo es que BigDecimal.mode es estado GLOBAL del proceso: cualquier
+      # gema de la aplicación puede cambiarlo, y entonces todos los importes
+      # redondearían distinto y con ellos las huellas, sin que nadie relacionara
+      # una cosa con la otra. Pasándolo en la llamada, da igual lo que haga el
+      # resto. HALF_UP es además el que aplica la normativa fiscal española.
       resultado = decimal.round(2, BigDecimal::ROUND_HALF_UP).to_s('F')
       resultado = format('%.2f', resultado.to_d) # asegura los 2 decimales
 

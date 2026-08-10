@@ -97,9 +97,26 @@ class HuellaTest < Minitest::Test
     assert_raises(ArgumentError) { VerifactuRails::Huella.alta(**ALTA.merge(importe_total: 121.0)) }
   end
 
-  def test_redondeo_half_up_no_bancario
+  # HALF_UP, y sobre todo INDEPENDIENTE del modo global.
+  #
+  # `BigDecimal.mode` es estado del proceso: cualquier gema de la aplicación
+  # puede cambiarlo, y si el formateo no fijara el suyo, todos los importes
+  # redondearían distinto y con ellos las huellas, sin que nadie relacionase una
+  # cosa con la otra. Ruby ya trae HALF_UP por defecto, así que comprobarlo solo
+  # con el modo por defecto pasaría igual aunque el código no fijara nada: por
+  # eso la segunda mitad cambia el modo global a propósito.
+  def test_redondeo_half_up_pase_lo_que_pase_con_el_modo_global
+    anterior = BigDecimal.mode(BigDecimal::ROUND_MODE)
+
     assert_equal '0.13', VerifactuRails::Importe.formatear(BigDecimal('0.125'))
-    assert_equal '2.68', VerifactuRails::Importe.formatear(BigDecimal('2.675'))
+    assert_equal '2.67', VerifactuRails::Importe.formatear(BigDecimal('2.665'))
+
+    BigDecimal.mode(BigDecimal::ROUND_MODE, BigDecimal::ROUND_HALF_EVEN)
+
+    assert_equal '0.13', VerifactuRails::Importe.formatear(BigDecimal('0.125'))
+    assert_equal '2.67', VerifactuRails::Importe.formatear(BigDecimal('2.665'))
+  ensure
+    BigDecimal.mode(BigDecimal::ROUND_MODE, anterior) if anterior
   end
 
   def test_importe_negativo_admitido_para_rectificativas
