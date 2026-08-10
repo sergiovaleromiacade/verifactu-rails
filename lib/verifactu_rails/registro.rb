@@ -239,6 +239,12 @@ module VerifactuRails
     TIPOS_SIMPLIFICADA_CUALIFICADA = %w[F1 F3 R1 R2 R3 R4].freeze
     TIPOS_SIN_IDENTIF_DESTINATARIO = %w[F2 R5].freeze
 
+    # Ap. 15.6.4: los tipos que el grupo de entidades de nivel avanzado excluye.
+    TIPOS_SIN_DESTINATARIO_NI_SUSTITUTIVA = %w[F2 F3 R5].freeze
+    # Ap. 15.6.9.
+    TIPOS_IVA_PENDIENTE_AAPP = %w[F1 R1 R2 R3 R4].freeze
+    PREFIJOS_NIF_AAPP = %w[P Q S V].freeze
+
     attr_reader :id_emisor, :num_serie, :fecha_expedicion, :nombre_razon_emisor,
                 :tipo_factura, :descripcion_operacion, :desglose, :cuota_total,
                 :importe_total, :sistema_informatico, :fecha_hora_gen,
@@ -599,7 +605,89 @@ module VerifactuRails
     # pueden vivir en Detalle por mucho que hablen del desglose.
     def validar_desglose_cruzado!
       validar_inversion_sujeto_pasivo!
+      validar_grupo_entidades!
+      validar_cobro_por_cuenta_de_terceros!
+      validar_iva_pendiente_aapp!
       desglose.detalles.each { |d| d.validar_en_fecha!(fecha_referencia) }
+    end
+
+    # Las claves de régimen cuyas reglas (ap. 15.6.4, 15.6.7 y 15.6.9) miran
+    # fuera de la línea. El resto de la 15.6 vive en Detalle.
+    #
+    # Igual que allí, solo cuentan las líneas de IVA o IGIC: la norma acota estas
+    # reglas a "Impuesto = 01, 03 o no se cumplimenta".
+    def usa_regimen?(clave)
+      desglose.detalles.any? do |d|
+        d.clave_regimen == clave && (d.iva? || d.impuesto == '03')
+      end
+    end
+
+    # Ap. 15.6.4. La segunda condición no se puede cumplir: exige
+    # BaseImponibleACoste, que esta gema no emite. Se para aquí en vez de armar
+    # un registro que la AEAT va a rechazar, y el mensaje dice por qué.
+    def validar_grupo_entidades!
+      return unless usa_regimen?('06')
+
+      if TIPOS_SIN_DESTINATARIO_NI_SUSTITUTIVA.include?(tipo_factura)
+        raise ValidacionError,
+              'ClaveRegimen 06 (grupo de entidades, nivel avanzado) no cabe con ' \
+              "TipoFactura #{tipo_factura}: la norma excluye " \
+              "#{TIPOS_SIN_DESTINATARIO_NI_SUSTITUTIVA.join(', ')}"
+      end
+
+      raise ValidacionError,
+            'ClaveRegimen 06 (grupo de entidades, nivel avanzado) exige ' \
+            'BaseImponibleACoste, un campo que esta gema todavía no emite. Un ' \
+            'registro así lo rechazaría la AEAT, así que no se construye.'
+    end
+
+    # Ap. 15.6.7. La calificación N1 la exige Detalle; aquí van las dos
+    # condiciones que necesitan la cabecera.
+    def validar_cobro_por_cuenta_de_terceros!
+      return unless usa_regimen?('10')
+
+      unless tipo_factura == 'F1'
+        raise ValidacionError,
+              'ClaveRegimen 10 (cobro por cuenta de terceros) exige TipoFactura ' \
+              "F1, no #{tipo_factura}"
+      end
+      return if Array(destinatarios).all?(&:nif)
+
+      raise ValidacionError,
+            'ClaveRegimen 10 (cobro por cuenta de terceros) exige que TODOS los ' \
+            'destinatarios se identifiquen por NIF, no por IDOtro'
+    end
+
+    # Ap. 15.6.9. El NIF de una Administración Pública empieza por P, Q, S o V,
+    # y la norma lo exige explícitamente aquí.
+    def validar_iva_pendiente_aapp!
+      return unless usa_regimen?('14')
+
+      unless TIPOS_IVA_PENDIENTE_AAPP.include?(tipo_factura)
+        raise ValidacionError,
+              'ClaveRegimen 14 (IVA pendiente de devengo, AAPP) exige TipoFactura ' \
+              "#{TIPOS_IVA_PENDIENTE_AAPP.join(', ')}, no #{tipo_factura}"
+      end
+      validar_fecha_operacion_aapp!
+      return if Array(destinatarios).all? { |d| d.nif && PREFIJOS_NIF_AAPP.include?(d.nif[0]) }
+
+      raise ValidacionError,
+            'ClaveRegimen 14 (IVA pendiente de devengo, AAPP) exige que todos los ' \
+            "destinatarios lleven NIF y empiece por #{PREFIJOS_NIF_AAPP.join(', ')}"
+    end
+
+    def validar_fecha_operacion_aapp!
+      if fecha_operacion.nil?
+        raise ValidacionError,
+              'ClaveRegimen 14 (IVA pendiente de devengo, AAPP) exige FechaOperacion'
+      end
+      return if Date.strptime(fecha_operacion, '%d-%m-%Y') >
+                Date.strptime(fecha_expedicion, '%d-%m-%Y')
+
+      raise ValidacionError,
+            'ClaveRegimen 14 (IVA pendiente de devengo, AAPP) exige que ' \
+            "FechaOperacion (#{fecha_operacion}) sea posterior a la de " \
+            "expedición (#{fecha_expedicion})"
     end
 
     # Ap. 15.4, primera regla. Coincide en lista con TIPOS_CON_DESTINATARIO pero

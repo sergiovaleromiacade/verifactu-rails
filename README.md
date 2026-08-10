@@ -320,14 +320,21 @@ criterio de caja, `11` arrendamiento de local de negocio sujeto a retención y
 los Diseños de registro de la AEAT; aquí no se reproduce entera porque cambia con
 las versiones y no queremos una copia que envejezca en silencio.
 
-**Aviso de alcance.** La gema comprueba que la clave sea admisible para el
-impuesto, que esté informada cuando toca y que no lo esté con `05`. Lo que **no**
-comprueba son las reglas que atan cada clave concreta con la calificación
-(Validaciones ap. 15.6.1 a 15.6.11): que con `02` solo quepa `OperacionExenta`,
-que con `04` la calificación sea `S2` o exenta, que con `08` sea `N2`, y demás.
-Esas las valida la AEAT al recibir, así que un desglose incoherente pasa el
-control local y se lo encuentra el servicio. Está anotado en
-[doc/FUENTES.md](doc/FUENTES.md).
+Cada clave arrastra además sus propias reglas, que la gema aplica antes de
+enviar (Validaciones ap. 15.6): con `02` solo cabe `OperacionExenta`; con `03`,
+si hay calificación, solo `S1`; con `04`, `S2` o exenta; con `07` no valen `S2`,
+`N1`, `N2` ni las exenciones `E2`–`E5`; con `08` y con `20` en IGIC tiene que ser
+`N2`; con `11` el único tipo admitido es el 21; con `10` la factura tiene que ser
+`F1` y todos los destinatarios llevar NIF; y con `14` hace falta `fecha_operacion:`
+posterior a la de expedición y destinatarios con NIF de administración pública.
+
+Dos avisos sobre esto:
+
+- **En IPSI no aplican.** La norma las acota a IVA e IGIC, y en IPSI las claves
+  `18`, `19` y `20` significan otra cosa. La gema respeta esa frontera.
+- **La clave `06` no se puede usar.** Exige `BaseImponibleACoste`, un campo que
+  la gema no emite, así que se rechaza en local con ese motivo en vez de armar un
+  registro que la AEAT va a rechazar igual.
 
 Los tipos impositivos de IVA y el recargo de equivalencia que admite cada uno se
 validan contra la fecha de la operación:

@@ -152,9 +152,34 @@ module VerifactuRails
 
     def validar_coherencia!
       validar_clave_regimen!
+      validar_regimen_de_la_linea!
       validar_exenta!
       validar_calificacion!
       validar_recargo!
+    end
+
+    # Ap. 15.6.1 a 15.6.11: cada clave de régimen restringe qué calificación o
+    # qué exención caben en SU MISMA línea. Las que además miran el tipo de
+    # factura, los destinatarios o la fecha —las claves 06, 10 y 14— no están
+    # aquí: las dispara RegistroAlta, que es quien conoce esos datos.
+    #
+    # Solo aplican con IVA e IGIC, y eso no es un descuido: la norma acota cada
+    # regla a "Impuesto = 01, 03 o no se cumplimenta". En IPSI las claves 18, 19
+    # y 20 significan otra cosa —art. 73 de la Ordenanza de Ceuta, exentas
+    # interiores y estimación objetiva—, así que aplicarles estas restricciones
+    # sería inventárselas sobre una lista distinta.
+    def validar_regimen_de_la_linea!
+      return unless iva? || impuesto == '03'
+
+      case clave_regimen
+      when '02' then validar_regimen_exportacion!
+      when '03' then validar_regimen_rebu!
+      when '04' then validar_regimen_oro!
+      when '07' then validar_regimen_criterio_caja!
+      when '08' then exigir_calificacion!('N2', '08 (operaciones sujetas a IPSI/IGIC)')
+      when '11' then validar_regimen_arrendamiento!
+      when '20' then exigir_calificacion!('N2', '20 con IGIC (sujetas al IPSI)') if impuesto == '03'
+      end
     end
 
     # Ap. 15.6: solo cabe con IVA, IPSI o IGIC, y ahí es obligatorio.
@@ -169,6 +194,74 @@ module VerifactuRails
       end
 
       @clave_regimen = Formato.enumerado(clave_regimen, 'ClaveRegimen', regimenes_admitidos)
+    end
+
+    # Ap. 15.6.1. "Solo puede estar cumplimentado OperacionExenta", o sea que la
+    # línea tiene que ser exenta.
+    def validar_regimen_exportacion!
+      return if exenta?
+
+      raise ValidacionError,
+            'ClaveRegimen 02 (exportación) solo admite OperacionExenta, no ' \
+            "CalificacionOperacion #{calificacion}"
+    end
+
+    # Ap. 15.6.2. Ojo al matiz: la calificación es OPCIONAL aquí -el REBU admite
+    # operación exenta, y la propia norma lo aclara citando el art. 137.Dos.5ª de
+    # la Ley 37/1992-, pero si se informa solo cabe S1.
+    def validar_regimen_rebu!
+      return if calificacion.nil? || calificacion == 'S1'
+
+      raise ValidacionError,
+            'ClaveRegimen 03 (REBU) solo admite CalificacionOperacion S1, no ' \
+            "#{calificacion}"
+    end
+
+    # Ap. 15.6.3: "solo puede ser S2, o bien OperacionExenta".
+    def validar_regimen_oro!
+      return if exenta? || calificacion == 'S2'
+
+      raise ValidacionError,
+            'ClaveRegimen 04 (oro de inversión) exige CalificacionOperacion S2 ' \
+            'o una operación exenta'
+    end
+
+    # Ap. 15.6.5, que va por los dos lados: ni ciertas calificaciones ni ciertas
+    # exenciones.
+    def validar_regimen_criterio_caja!
+      if %w[S2 N1 N2].include?(calificacion)
+        raise ValidacionError,
+              'ClaveRegimen 07 (criterio de caja) no admite CalificacionOperacion ' \
+              "#{calificacion}"
+      end
+      return unless %w[E2 E3 E4 E5].include?(exenta)
+
+      raise ValidacionError,
+            "ClaveRegimen 07 (criterio de caja) no admite OperacionExenta #{exenta}"
+    end
+
+    # Ap. 15.6.8, y solo para IVA: "únicamente se admitirá el TipoImpositivo = 21".
+    #
+    # Si no hay tipo impositivo no se exige ninguno: la norma restringe cuál cabe,
+    # no obliga a informarlo. Inventarse esa obligación bloquearía un arrendamiento
+    # exento, que es el error que esta gema ya cometió una vez con FacturasRectificadas.
+    def validar_regimen_arrendamiento!
+      return unless iva?
+      return if tipo_impositivo.nil? || tipo_impositivo == '21.00'
+
+      raise ValidacionError,
+            'ClaveRegimen 11 (arrendamiento de local de negocio) solo admite ' \
+            "TipoImpositivo 21.00, no #{tipo_impositivo}"
+    end
+
+    # Ap. 15.6.6 y 15.6.10: "tiene que ser NN y siempre debe ir relleno", así que
+    # una línea exenta tampoco vale.
+    def exigir_calificacion!(esperada, descripcion)
+      return if calificacion == esperada
+
+      tenia = exenta? ? "OperacionExenta #{exenta}" : "CalificacionOperacion #{calificacion.inspect}"
+      raise ValidacionError,
+            "ClaveRegimen #{descripcion} exige CalificacionOperacion #{esperada}, y llegó #{tenia}"
     end
 
     # Ap. 15.5: una exenta no admite ninguno de los campos de sujeción.

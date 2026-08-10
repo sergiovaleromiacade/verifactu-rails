@@ -83,6 +83,8 @@ reproducen exactamente, encadenamiento incluido.
 | 15.4 | `CalificacionOperacion` S2 solo en F1/F3/R1-R4 | `#validar_inversion_sujeto_pasivo!` |
 | 15.4-15.7 | Coherencia de `Calificacion`, `OperacionExenta` y recargo | `Detalle#validar_coherencia!` |
 | 15.6 | `ClaveRegimen`: obligatoria con IVA/IPSI/IGIC, prohibida con Otros, y contenida en la lista que corresponda al impuesto | `Detalle#validar_clave_regimen!` |
+| 15.6.1-3, 15.6.5-6, 15.6.8, 15.6.10 | Cada clave de régimen ata la calificación o la exención de su línea | `Detalle#validar_regimen_de_la_linea!` |
+| 15.6.4, 15.6.7, 15.6.9 | Claves 06, 10 y 14: tipo de factura, destinatarios y fecha de operación | `RegistroAlta#validar_desglose_cruzado!` |
 
 Tres cosas que conviene entender:
 
@@ -105,21 +107,32 @@ porque los tipos se reparten entre los que exigen destinatario y los que lo
 prohíben. Escribirla habría dejado una comprobación incapaz de fallar, que
 aparenta cobertura sin cubrir nada.
 
-**Sin implementar**:
+**Sin implementar**: ap. 15.2 `BaseImponibleACoste`, porque el campo no está
+soportado por la gema. Arrastra una consecuencia: la clave de régimen **`06`
+(grupo de entidades, nivel avanzado) exige ese campo**, así que un registro que
+la use no se puede construir bien. La gema lo rechaza en local diciendo por qué,
+en vez de armar algo que la AEAT va a rechazar de todas formas.
 
-- **Ap. 15.2 `BaseImponibleACoste`**, porque el campo no está soportado por la
-  gema.
-- **Ap. 15.6.1 a 15.6.11**, las reglas que atan cada `ClaveRegimen` concreta con
-  la calificación de la línea: que con `02` solo quepa `OperacionExenta`, que con
-  `03` la calificación solo pueda ser `S1`, que con `04` sea `S2` o exenta, que
-  con `06` el `TipoFactura` no sea F2/F3/R5 y `BaseImponibleACoste` esté relleno,
-  que con `08` y con `20` en IGIC sea `N2`, y las de `07`, `10`, `11` y `14`. De
-  la 15.6 solo está la pertenencia a la lista según el impuesto, la
-  obligatoriedad y la prohibición con `Impuesto=05`.
+**Sobre el alcance de la 15.6, para no confundirlo:** sus reglas se acotan a
+"Impuesto = 01 (IVA), 03 (IGIC) o no se cumplimenta". En IPSI **no aplican**, y
+eso importa porque ahí las claves 18, 19 y 20 significan otra cosa —art. 73.4 y
+5 de la Ordenanza fiscal de Ceuta, operaciones interiores exentas y régimen de
+estimación objetiva—. Aplicarles las reglas de IVA sería inventar restricciones
+sobre una lista distinta.
 
-  Consecuencia: un desglose que viole cualquiera de esas reglas **pasa el control
-  local** y lo rechaza la AEAT. La de `06` no se puede implementar entera sin
-  soportar antes `BaseImponibleACoste`.
+### Qué hacen las otras implementaciones con la 15.6
+
+Comprobado leyendo su código fuente, no su documentación:
+
+- **`josemmo/Verifactu-PHP`**: no implementa **ninguna**. `ClaveRegimen` es un
+  enum puro; la única regla cruzada que tiene es la de la clave 18 con el recargo
+  de equivalencia.
+- **`mybooking-es/verifactu-rb`**: implementa la mayoría, y es la referencia más
+  completa que hemos encontrado. Le faltan las tres del bloque de la clave 14
+  (destinatarios con NIF que empiece por P/Q/S/V y tipo de factura) y la de la
+  clave 20 con IGIC. Su regla de exenciones del criterio de caja queda además en
+  una rama inalcanzable, porque su constructor exige `calificacion_operacion` y
+  la comprobación de `OperacionExenta` vive en el `elsif`.
 
 **[doc] Otros errores admisibles** (se aceptan, obligan a subsanar): `ImporteTotal`
 o `CuotaTotal` que no cuadran con el desglose, con margen de ±10,00 € (no aplica
