@@ -110,11 +110,14 @@ module VerifactuRails
       end
 
       # La fila es de esta cadena si la AEAT la atribuye a nuestra instalación.
-      # Se filtra AQUÍ, en cliente, y no solo mandando el SistemaInformatico en
-      # el filtro de la consulta: que el cotejo del SIF funcione en el servidor
-      # no está confirmado contra el servicio real, y si no funciona la consulta
-      # devuelve las facturas de todas las instalaciones del obligado. Sin este
-      # filtro, cada tienda ajena aparecería como "solo en la AEAT".
+      #
+      # Se filtra AQUÍ, en cliente, además de mandar el SistemaInformatico en el
+      # filtro de la consulta. Está comprobado que el servidor SÍ aplica ese
+      # cotejo (6 facturas del mismo NIF y periodo en dos instalaciones, la
+      # consulta devolvió solo las 2 de la consultada), así que esto es
+      # redundante hoy. Se queda igualmente: es barato, y si algún día cambia el
+      # cotejo del servidor el informe seguirá siendo correcto en vez de
+      # llenarse de :solo_en_aeat por facturas de otras tiendas.
       #
       # Una fila sin NumeroInstalacion se da por nuestra: preferimos revisarla de
       # más a dejar pasar una factura ajena sin mirar.

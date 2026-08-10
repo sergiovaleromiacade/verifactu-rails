@@ -126,11 +126,10 @@ class ReconciliacionTest < Minitest::Test
 
   # --- Aislamiento por instalación ------------------------------------------
 
-  # El filtro por SistemaInformatico se manda en la consulta, pero que el
-  # servidor lo aplique NO está confirmado contra el servicio real. Si no lo
-  # aplicase, la respuesta traería las facturas de todas las instalaciones del
-  # obligado y cada tienda ajena aparecería como :solo_en_aeat. Por eso se filtra
-  # también en cliente, y esto es lo que lo demuestra.
+  # El servidor SÍ aplica el cotejo del SistemaInformatico (comprobado contra
+  # preproducción), así que en la práctica estas filas no deberían llegar. El
+  # filtro en cliente es la red por si eso cambia: sin él, cada tienda ajena
+  # aparecería como :solo_en_aeat. Esto es lo que demuestra que la red existe.
   def test_las_filas_de_otra_instalacion_se_ignoran_y_se_cuentan
     r = anotar('FA/1', estado: 'anotado')
 

@@ -9,14 +9,11 @@
 # Es de SOLO LECTURA por partida doble: la consulta no modifica nada en la AEAT y
 # `Reconciliacion` no toca la base de datos. Se puede correr sin miedo.
 #
-# Lo que este guion sirve para averiguar, y que los tests no pueden decidir:
-#
-#   1. Si el filtro por SistemaInformatico se aplica de verdad en el servidor.
-#      La reconciliación no depende de ello -filtra también en cliente por
-#      NumeroInstalacion-, pero saberlo cambia cuánto se descarga en cada pasada.
-#      Compara el total de filas con las que se atribuyen a esta instalación.
-#   2. Si la AEAT imputa al periodo por FECHA DE EXPEDICIÓN, que es lo que asume
-#      `Reconciliacion#vigentes` al elegir qué facturas locales revisar.
+# Con este guion se comprobaron el 10-08-2026 las dos cosas que los tests no
+# pueden decidir, y que hasta entonces eran suposiciones del código (ver
+# doc/FUENTES.md): que el cotejo del SistemaInformatico SÍ lo aplica el servidor,
+# y que la AEAT imputa el periodo por FECHA DE EXPEDICIÓN, que es lo que asume
+# `Reconciliacion#vigentes` al elegir qué facturas locales revisar.
 #
 # Necesita base de datos: VF_DATABASE_URL o DATABASE_URL, y si no PostgreSQL
 # local en verifactu_rails_test.
@@ -51,15 +48,35 @@ cadena = Libro::Cadena.find_by(numero_instalacion: instalacion) ||
 certificado = Certificado.desde_pkcs12(File.binread(env!('VF_P12')), env!('VF_PASS'))
 puts "Certificado: #{certificado.resumen}"
 
-# El SIF que se manda en el filtro de la consulta sale de la configuración, así
-# que tiene que ser el MISMO con el que se anotaron los registros. Si no, el
-# cotejo del SIF -si el servidor lo aplica- no encontrará nada.
+# El SIF que se manda en el filtro de la consulta tiene que ser el MISMO con el
+# que se anotaron los registros: si el servidor aplica el cotejo y no coincide,
+# la respuesta viene SinDatos y todo parece "no consta" sin serlo.
+#
+# Por eso no se pone a mano: se lee del payload del último registro anotado, que
+# es el XML tal cual se remitió. Adivinarlo es un error que además se disfraza de
+# divergencia, que es la peor forma de equivocarse aquí.
+def sif_anotado(cadena)
+  registro = cadena.registros.order(:id).last
+  abort "La cadena #{cadena.numero_instalacion} no tiene registros." if registro.nil?
+
+  nodo = Nokogiri::XML(registro.payload)
+              .at_xpath('//*[local-name()="SistemaInformatico"]')
+  abort 'El payload no trae SistemaInformatico.' if nodo.nil?
+
+  %w[NombreRazon NIF NombreSistemaInformatico IdSistemaInformatico Version]
+    .to_h { |campo| [campo, nodo.at_xpath("*[local-name()='#{campo}']")&.text] }
+end
+
+sif = sif_anotado(cadena)
+puts "SIF con el que se anotó: #{sif['NombreSistemaInformatico']} " \
+     "#{sif['IdSistemaInformatico']} v#{sif['Version']} (#{sif['NombreRazon']})"
+
 Libro.configure do |c|
-  c.productor_nombre = ENV['VF_PRODUCTOR'] || cadena.nombre_obligado
-  c.productor_nif    = ENV['VF_PRODUCTOR_NIF'] || cadena.nif_obligado
-  c.nombre_sistema   = ENV['VF_SISTEMA'] || 'TuFactura'
-  c.id_sistema       = ENV['VF_ID_SISTEMA'] || '01'
-  c.version          = ENV['VF_VERSION'] || VerifactuRails::VERSION
+  c.productor_nombre = sif['NombreRazon']
+  c.productor_nif    = sif['NIF']
+  c.nombre_sistema   = sif['NombreSistemaInformatico']
+  c.id_sistema       = sif['IdSistemaInformatico']
+  c.version          = sif['Version']
   c.entorno          = (ENV['VF_ENTORNO'] || 'pruebas').to_sym
 end
 

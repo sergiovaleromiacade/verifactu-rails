@@ -4,11 +4,8 @@ Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rai
 
 > **Estado: en desarrollo, sin release público.** La capa Rails cierra el ciclo
 > —libro registro, encadenamiento bajo lock, autochequeo y envío por lotes— y ha
-> sido ejercitada contra el entorno de pruebas de la AEAT de punta a punta. La
-> reconciliación contra la consulta ya está, pero es lo único de la capa Rails
-> que **todavía no se ha contrastado contra el servicio real**: se ejercita con
-> respuestas enlatadas validadas contra el XSD. Para eso está
-> `examples/reconciliacion_pruebas.rb`.
+> sido ejercitada contra el entorno de pruebas de la AEAT de punta a punta,
+> reconciliación incluida.
 > El entorno de pruebas de la AEAT ha aceptado, con la huella validada por su
 > propio recálculo: altas encadenadas, un lote de tres registros encadenados
 > entre sí en un mismo envío, una anulación, una rectificativa R1 sustitutiva y
@@ -332,11 +329,20 @@ Dos límites que conviene tener claros antes de fiarse del informe:
   mansalva. No se pierde nada: los importes entran en la huella, y la huella sí
   se compara.
 
-Y un aviso de honestidad: el filtro por `SistemaInformatico` se manda en la
-consulta, pero **que el servidor lo aplique no está confirmado**. Por eso la
-reconciliación filtra además en cliente por el `NumeroInstalacion` que la AEAT
-devuelve en cada fila; `informe.ajenas` cuenta las que se descartaron por no ser
-de esta instalación.
+El filtro por `SistemaInformatico` **sí lo aplica el servidor**, comprobado
+contra preproducción: con 6 facturas del mismo NIF y periodo repartidas en dos
+instalaciones, la consulta filtrada devolvió solo las 2 de la instalación
+consultada. Dos consecuencias prácticas:
+
+- **El SIF que se manda en el filtro tiene que ser el mismo con el que se
+  anotaron los registros.** Con uno distinto la respuesta viene `SinDatos`, y eso
+  se disfraza de "no consta ninguna factura". Como `Reconciliacion` lo toma de
+  `Libro.configuracion`, cuidado si has cambiado nombre, id o versión del sistema
+  desde que anotaste.
+- La reconciliación filtra **además** en cliente por el `NumeroInstalacion` que
+  la AEAT devuelve en cada fila. Ahora se sabe que es redundante, y se queda: si
+  algún día cambia el cotejo del servidor, el informe seguirá siendo correcto en
+  vez de llenarse de `:solo_en_aeat`. `informe.ajenas` cuenta las descartadas.
 
 ## Avisos de implementación
 

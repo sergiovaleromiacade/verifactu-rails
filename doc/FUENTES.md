@@ -699,3 +699,48 @@ espera quedó en 18:00:42, o sea **60 s** otra vez. Con cinco medidas consistent
 (lotes de 1, 2 y 3 registros) ya no parece casualidad, pero sigue siendo
 preproducción: no se ha medido en producción y la AEAT lo devuelve en cada
 respuesta precisamente porque puede variarlo.
+
+## La reconciliación, contra el servicio real: el filtro por SIF sí se aplica
+
+Ejecutado el 10-08-2026 sobre una instalación nueva (`REMESA-20260810112115`,
+NIF 89890001K), dos altas encadenadas y remitidas, y a continuación
+`Reconciliacion#revisar(ejercicio: 2026, periodo: 8)`:
+
+```
+2026-08: 2 facturas locales, 2 filas de la AEAT, 0 divergencias
+```
+
+Las dos cosas que esto cierra eran, hasta ahora, suposiciones del código:
+
+- **El cotejo del `SistemaInformatico` SÍ lo aplica el servidor.** Es la primera
+  vez que se comprueba, y la prueba es indirecta pero sólida: la campaña del
+  07-08-2026 dejó **4 facturas anotadas bajo el mismo NIF y el mismo periodo de
+  imputación (2026-08)**, en otra instalación (`CAMP-20260807115225`). La
+  consulta filtrada devolvió **solo las 2 de esta instalación**. Sin cotejo en
+  servidor habrían vuelto las 6.
+
+  Matiz de alcance: se filtra mandando el bloque `SistemaInformatico` **entero**,
+  así que esto demuestra que el conjunto discrimina, no qué campo lo hace. No se
+  ha probado si basta el `NumeroInstalacion` o si cuentan también nombre, id y
+  versión. Mientras no se sepa, mandarlo entero y **coincidiendo con el que se
+  usó al anotar** es obligatorio: con un SIF distinto la respuesta viene
+  `SinDatos`, y eso se disfraza de "no consta ninguna factura", que es la peor
+  forma de equivocarse aquí.
+
+  Por eso `Reconciliacion` filtra **además en cliente** por el
+  `NumeroInstalacion` que la AEAT devuelve en cada fila. Ahora se sabe que es
+  redundante, y se queda: el día que la AEAT cambie el cotejo, la reconciliación
+  seguirá siendo correcta en vez de inundarse de `:solo_en_aeat`.
+
+- **La AEAT imputa el periodo por FECHA DE EXPEDICIÓN.** Las dos facturas se
+  expidieron el 10-08-2026 y salieron consultando ejercicio 2026, periodo 08. Es
+  lo que asume `Reconciliacion#vigentes` al elegir qué facturas locales revisar.
+
+### Un aviso operativo que costó datos
+
+La suite de tests y los guiones de preproducción compartían base de datos
+(`verifactu_rails_test`), y `BaseDatos.limpiar!` borra cadenas y registros en
+cada `setup`. Un `rake test` se llevó por delante el libro local de la campaña
+del 07-08-2026; en la AEAT sigue anotada, pero el lado local con el que
+contrastarla ya no existe. Para las pruebas contra el servicio real, base de
+datos aparte (`VF_DATABASE_URL`).
