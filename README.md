@@ -4,8 +4,11 @@ Componente Ruby para la integración con **VERI\*FACTU** (AEAT), orientado a Rai
 
 > **Estado: en desarrollo, sin release público.** La capa Rails cierra el ciclo
 > —libro registro, encadenamiento bajo lock, autochequeo y envío por lotes— y ha
-> sido ejercitada contra el entorno de pruebas de la AEAT de punta a punta. Falta
-> la reconciliación contra la consulta.
+> sido ejercitada contra el entorno de pruebas de la AEAT de punta a punta. La
+> reconciliación contra la consulta ya está, pero es lo único de la capa Rails
+> que **todavía no se ha contrastado contra el servicio real**: se ejercita con
+> respuestas enlatadas validadas contra el XSD. Para eso está
+> `examples/reconciliacion_pruebas.rb`.
 > El entorno de pruebas de la AEAT ha aceptado, con la huella validada por su
 > propio recálculo: altas encadenadas, un lote de tres registros encadenados
 > entre sí en un mismo envío, una anulación, una rectificativa R1 sustitutiva y
@@ -95,11 +98,11 @@ Lo que el generador **no** hace, y no es un olvido:
 | `VerifactuRails::QR` | URL de cotejo del código QR. La AEAT no la devuelve: la construye el SIF |
 | `VerifactuRails::Libro` | Capa Rails: libro registro append-only, encadenamiento bajo lock y autochequeo |
 | `VerifactuRails::Libro::Remesa` | Envío por lotes de lo pendiente, con control de flujo y reintentos |
+| `VerifactuRails::Libro::Reconciliacion` | Contraste de solo lectura entre el libro y lo que la AEAT tiene anotado |
 
 La capa `Libro` se carga aparte (`require 'verifactu_rails/libro'`) porque exige
 ActiveRecord; el núcleo no depende de Rails. En una app Rails ese require sobra:
-lo hace el railtie en cuanto ActiveRecord está listo. Pendiente: el job de
-reconciliación contra la consulta.
+lo hace el railtie en cuanto ActiveRecord está listo.
 
 ### Rectificativas
 
@@ -282,6 +285,58 @@ devuelve "duplicado", y eso **cuenta como éxito**.
   todo lo que encadena detrás apunta a un eslabón que allí no existe. Seguir
   enviando funcionaría —la AEAT no valida el eslabón al recibir— y dejaría una
   cadena incoherente aceptada en silencio. Resolverlo es una decisión de negocio.
+
+### Reconciliar
+
+La respuesta a un envío dice si la AEAT **aceptó** el registro. No dice qué queda
+almacenado meses después, y los estados ni siquiera son los mismos: la consulta
+añade `Anulado`, que el canal de envío no sabe expresar. Reconciliar es contrastar
+las dos cosas.
+
+```ruby
+cadena  = VerifactuRails::Libro::Cadena.find_by!(numero_instalacion: '...')
+informe = VerifactuRails::Libro::Reconciliacion
+          .new(cadena, transporte: transporte)
+          .revisar(ejercicio: 2026, periodo: 8)
+
+informe.cuadra?      # => true si el libro y la AEAT dicen lo mismo de cada factura
+informe.divergencias # => [#<Divergencia tipo: :no_consta, num_serie: 'FA/7', ...>]
+```
+
+**Solo lee.** No corrige nada, ni siquiera lo que parece obvio, y es una decisión:
+lo que detecta es divergencia entre el sistema de registro y la AEAT, y un job que
+reescribiera el estado local para "cuadrar" taparía justo lo que se le ha pedido
+revelar. Tampoco hace falta para el caso frecuente: `Remesa` ya reintenta sola lo
+que quedó en `enviando`, porque un duplicado cuenta como éxito.
+
+Los cinco tipos de divergencia:
+
+| Tipo | Qué significa |
+|---|---|
+| `:no_consta` | El libro la da por remitida y la AEAT no la devuelve |
+| `:huella_distinta` | La AEAT guarda otra huella para esa factura |
+| `:estado_distinto` | P. ej. la AEAT la da por `Anulado` y el libro no |
+| `:consta_sin_enviar` | El libro la cree pendiente y la AEAT ya la tiene |
+| `:solo_en_aeat` | La AEAT tiene una factura de esta instalación que el libro no conoce |
+
+Dos límites que conviene tener claros antes de fiarse del informe:
+
+- **Reconcilia el estado actual de cada factura, no el encadenamiento.** La
+  consulta devuelve una foto por factura, no el histórico: una subsanación
+  sustituye al alta original y la anulación sustituye a lo anulado, así que los
+  eslabones intermedios ya no se devuelven. Detectar una bifurcación sigue
+  dependiendo del índice único local. Por eso se compara contra el registro
+  **vigente** de cada factura, que es el que la AEAT debería estar devolviendo.
+- **Los importes no se comparan.** La AEAT los devuelve sin ceros a la derecha
+  (`121` por `121.00`), así que un cotejo textual daría falsos positivos a
+  mansalva. No se pierde nada: los importes entran en la huella, y la huella sí
+  se compara.
+
+Y un aviso de honestidad: el filtro por `SistemaInformatico` se manda en la
+consulta, pero **que el servidor lo aplique no está confirmado**. Por eso la
+reconciliación filtra además en cliente por el `NumeroInstalacion` que la AEAT
+devuelve en cada fila; `informe.ajenas` cuenta las que se descartaron por no ser
+de esta instalación.
 
 ## Avisos de implementación
 
