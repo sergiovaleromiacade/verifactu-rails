@@ -21,7 +21,8 @@ un sistema de facturación llave en mano, y no se afirma aquí que su uso baste 
 cumplir el RD 1007/2023 ni la
 Orden HAC/1177/2024. La responsabilidad de la declaración responsable del art. 13
 recae en quien despliega el sistema de facturación, no en el autor de esta gema.
-Ver [COMPLIANCE.md](COMPLIANCE.md) cuando exista.
+[COMPLIANCE.md](COMPLIANCE.md) delimita qué cubre la gema, qué te sigue tocando a
+ti y qué límites conviene entender antes de firmar nada.
 
 ## Alcance
 

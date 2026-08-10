@@ -33,7 +33,14 @@ Gem::Specification.new do |spec|
     # que es el fallo más difícil de ver venir.
     'lib/generators/**/*.tt',
     'LICENSE',
-    'README.md'
+    'README.md',
+    # COMPLIANCE.md delimita responsabilidades y es justo lo que va a querer leer
+    # quien evalúe la gema, así que tiene que viajar en ella y no solo estar en
+    # GitHub. Y con él va FUENTES.md: es a donde apunta cada vez que dice "está
+    # comprobado", y una declaración de alcance sin su respaldo vale bastante
+    # menos.
+    'COMPLIANCE.md',
+    'doc/FUENTES.md'
   ]
   spec.require_paths = ['lib']
 
