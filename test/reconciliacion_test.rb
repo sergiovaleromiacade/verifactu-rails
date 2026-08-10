@@ -126,10 +126,11 @@ class ReconciliacionTest < Minitest::Test
 
   # --- Aislamiento por instalación ------------------------------------------
 
-  # El servidor SÍ aplica el cotejo del SistemaInformatico (comprobado contra
-  # preproducción), así que en la práctica estas filas no deberían llegar. El
-  # filtro en cliente es la red por si eso cambia: sin él, cada tienda ajena
-  # aparecería como :solo_en_aeat. Esto es lo que demuestra que la red existe.
+  # Todo apunta a que el servidor aplica el cotejo del SistemaInformatico, así
+  # que en la práctica estas filas no deberían llegar; pero no está cerrado (ver
+  # doc/FUENTES.md). El filtro en cliente es la red para ese "no está cerrado":
+  # sin él, cada tienda ajena aparecería como :solo_en_aeat. Esto demuestra que
+  # la red existe.
   def test_las_filas_de_otra_instalacion_se_ignoran_y_se_cuentan
     r = anotar('FA/1', estado: 'anotado')
 

@@ -329,10 +329,11 @@ Dos límites que conviene tener claros antes de fiarse del informe:
   mansalva. No se pierde nada: los importes entran en la huella, y la huella sí
   se compara.
 
-El filtro por `SistemaInformatico` **sí lo aplica el servidor**, comprobado
-contra preproducción: con 6 facturas del mismo NIF y periodo repartidas en dos
-instalaciones, la consulta filtrada devolvió solo las 2 de la instalación
-consultada. Dos consecuencias prácticas:
+Todo apunta a que el filtro por `SistemaInformatico` **lo aplica el servidor**:
+con 6 facturas del mismo NIF y periodo repartidas en dos instalaciones, la
+consulta filtrada devolvió solo las 2 de la instalación consultada. No está
+cerrado del todo —queda por verificar que las otras 4 siguieran almacenadas ese
+día; ver `doc/FUENTES.md`—, pero las consecuencias prácticas no dependen de eso:
 
 - **El SIF que se manda en el filtro tiene que ser el mismo con el que se
   anotaron los registros.** Con uno distinto la respuesta viene `SinDatos`, y eso

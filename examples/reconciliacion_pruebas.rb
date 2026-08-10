@@ -9,11 +9,12 @@
 # Es de SOLO LECTURA por partida doble: la consulta no modifica nada en la AEAT y
 # `Reconciliacion` no toca la base de datos. Se puede correr sin miedo.
 #
-# Con este guion se comprobaron el 10-08-2026 las dos cosas que los tests no
-# pueden decidir, y que hasta entonces eran suposiciones del código (ver
-# doc/FUENTES.md): que el cotejo del SistemaInformatico SÍ lo aplica el servidor,
-# y que la AEAT imputa el periodo por FECHA DE EXPEDICIÓN, que es lo que asume
-# `Reconciliacion#vigentes` al elegir qué facturas locales revisar.
+# Con este guion se atacaron el 10-08-2026 las dos cosas que los tests no pueden
+# decidir (ver doc/FUENTES.md). Quedó cerrada una: la AEAT imputa el periodo por
+# FECHA DE EXPEDICIÓN, que es lo que asume `Reconciliacion#vigentes` al elegir
+# qué facturas locales revisar. La otra -si el cotejo del SistemaInformatico lo
+# aplica el servidor- quedó como probable, a falta de verificar que las facturas
+# de la instalación anterior siguieran almacenadas ese día.
 #
 # Necesita base de datos: VF_DATABASE_URL o DATABASE_URL, y si no PostgreSQL
 # local en verifactu_rails_test.

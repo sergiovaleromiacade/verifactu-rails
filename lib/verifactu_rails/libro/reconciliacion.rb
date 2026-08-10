@@ -112,12 +112,15 @@ module VerifactuRails
       # La fila es de esta cadena si la AEAT la atribuye a nuestra instalación.
       #
       # Se filtra AQUÍ, en cliente, además de mandar el SistemaInformatico en el
-      # filtro de la consulta. Está comprobado que el servidor SÍ aplica ese
-      # cotejo (6 facturas del mismo NIF y periodo en dos instalaciones, la
-      # consulta devolvió solo las 2 de la consultada), así que esto es
-      # redundante hoy. Se queda igualmente: es barato, y si algún día cambia el
-      # cotejo del servidor el informe seguirá siendo correcto en vez de
-      # llenarse de :solo_en_aeat por facturas de otras tiendas.
+      # filtro de la consulta. Todo apunta a que el servidor aplica ese cotejo (6
+      # facturas del mismo NIF y periodo en dos instalaciones, la consulta
+      # devolvió solo las 2 de la consultada), pero no está cerrado: falta
+      # verificar que las otras 4 siguieran almacenadas. Ver doc/FUENTES.md.
+      #
+      # Sea o no redundante, esto se queda: es barato, y hace que el informe siga
+      # siendo correcto tanto si la premisa falla como si algún día cambia el
+      # cotejo del servidor, en vez de llenarse de :solo_en_aeat por facturas de
+      # otras tiendas.
       #
       # Una fila sin NumeroInstalacion se da por nuestra: preferimos revisarla de
       # más a dejar pasar una factura ajena sin mirar.

@@ -700,7 +700,7 @@ espera quedó en 18:00:42, o sea **60 s** otra vez. Con cinco medidas consistent
 preproducción: no se ha medido en producción y la AEAT lo devuelve en cada
 respuesta precisamente porque puede variarlo.
 
-## La reconciliación, contra el servicio real: el filtro por SIF sí se aplica
+## La reconciliación, contra el servicio real (el filtro por SIF, probablemente sí)
 
 Ejecutado el 10-08-2026 sobre una instalación nueva (`REMESA-20260810112115`,
 NIF 89890001K), dos altas encadenadas y remitidas, y a continuación
@@ -710,14 +710,27 @@ NIF 89890001K), dos altas encadenadas y remitidas, y a continuación
 2026-08: 2 facturas locales, 2 filas de la AEAT, 0 divergencias
 ```
 
-Las dos cosas que esto cierra eran, hasta ahora, suposiciones del código:
+De las dos suposiciones que llevaba el código, una queda cerrada y la otra solo
+a medias:
 
-- **El cotejo del `SistemaInformatico` SÍ lo aplica el servidor.** Es la primera
-  vez que se comprueba, y la prueba es indirecta pero sólida: la campaña del
-  07-08-2026 dejó **4 facturas anotadas bajo el mismo NIF y el mismo periodo de
-  imputación (2026-08)**, en otra instalación (`CAMP-20260807115225`). La
-  consulta filtrada devolvió **solo las 2 de esta instalación**. Sin cotejo en
-  servidor habrían vuelto las 6.
+- **El cotejo del `SistemaInformatico` lo aplica el servidor: PROBABLE, no
+  comprobado.** El razonamiento es indirecto: la campaña del 07-08-2026 dejó 4
+  facturas anotadas bajo el mismo NIF y el mismo periodo de imputación (2026-08)
+  en otra instalación (`CAMP-20260807115225`), y la consulta de hoy, filtrada,
+  devolvió solo las 2 de esta instalación. Si no hubiera cotejo en servidor
+  habrían vuelto las 6.
+
+  **La premisa que falta:** que esas 4 siguieran almacenadas el 10-08-2026. No se
+  ha verificado. Preproducción es un entorno de pruebas sin trascendencia
+  tributaria y nada garantiza que no purguen datos, así que "las purgaron entre
+  el 7 y el 10" explica lo observado exactamente igual de bien. Tres días es poco
+  para una purga y por eso el filtro sigue siendo la explicación más probable,
+  pero probable no es comprobado.
+
+  Se cierra con una consulta de solo lectura: pedir el periodo 2026-08 con el SIF
+  de la campaña. Si vuelven las 4, el hallazgo queda firme. Si sale `SinDatos` no
+  prueba lo contrario por sí solo —podría ser un SIF que no coincide—, pero deja
+  la cuestión abierta, que es donde está.
 
   Matiz de alcance: se filtra mandando el bloque `SistemaInformatico` **entero**,
   así que esto demuestra que el conjunto discrimina, no qué campo lo hace. No se
