@@ -30,8 +30,9 @@ class EmpaquetadoTest < Minitest::Test
     refute_empty documentos, 'el gemspec no empaqueta ningún documento'
 
     rotos = documentos.flat_map do |documento|
-      enlaces(documento).reject { |destino| spec.files.include?(destino) }
-                        .map { |destino| "#{documento} -> #{destino}" }
+      enlaces(documento)
+        .reject { |destino| spec.files.include?(resolver(destino, documento)) }
+        .map { |destino| "#{documento} -> #{destino}" }
     end
 
     assert_empty rotos,
@@ -40,6 +41,15 @@ class EmpaquetadoTest < Minitest::Test
   end
 
   private
+
+  # Un enlace es relativo al documento que lo contiene, no a la raíz: desde
+  # doc/FUENTES.md, "../COMPLIANCE.md" es el COMPLIANCE.md de la raíz. Comparar
+  # la cadena tal cual daba un falso positivo justo en el caso que más importa,
+  # que es el enlace que cruza de directorio.
+  def resolver(destino, documento)
+    File.expand_path(destino, File.join('/', File.dirname(documento)))
+        .delete_prefix('/')
+  end
 
   def enlaces(documento)
     File.read(File.join(RAIZ, documento), encoding: 'UTF-8')

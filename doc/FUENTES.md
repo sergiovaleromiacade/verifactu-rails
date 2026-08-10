@@ -1,47 +1,65 @@
-# Fuentes normativas y qué se ha sacado de cada una
+# Fuentes y hallazgos
 
-Los PDF **no se versionan** aquí: son documentos de la AEAT, pesan casi 2 MB y no
-producen diffs legibles. Se registran URL, versión y SHA-256 para poder detectar
-que han cambiado, y se anota qué regla concreta salió de dónde.
+Qué dice la documentación oficial de VERI\*FACTU, qué se ha comprobado contra el
+servicio real de la AEAT y qué sigue siendo suposición. Es la justificación de
+las decisiones de diseño de la gema y el respaldo de [COMPLIANCE.md](../COMPLIANCE.md).
 
-Descargados y contrastados el **6 de agosto de 2026**.
+Cada bloque lleva marcado de dónde sale lo que afirma:
+
+- **[doc]** — de la documentación oficial de la AEAT.
+- **[real]** — comprobado contra el entorno de pruebas (preproducción).
+- **[?]** — deducido o supuesto, sin comprobar.
 
 ## Documentos
+
+Los PDF no se versionan aquí: pesan casi 2 MB y no producen diffs legibles. Se
+registran URL, versión y SHA-256 para detectar que han cambiado.
 
 | Documento | Versión | SHA-256 |
 |---|---|---|
 | [Especificaciones huella/hash](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Veri-Factu_especificaciones_huella_hash_registros.pdf) | 0.1.2 | `f4334c254bb875b417247b54315199f8…` |
 | [Validaciones y errores](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/Validaciones_Errores_Veri-Factu.pdf) | 1.2.2 | `426eb926fc098a36a163f66ca5f40d9e…` |
-| [Detalle de las especificaciones técnicas del código QR](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/DetalleEspecificacTecnCodigoQRfactura.pdf) | 0.5.0 (10-12-2025) | `f86b3c260d8a4963dbc18c5007732b53…` |
-| [Preguntas frecuentes de empresas de desarrollo](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/FAQs-Desarrolladores.pdf) | 1.3 (04-12-2025) | `73906dc8afbbb9da35f6cb489980352b…` |
+| [Especificaciones del código QR](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/DetalleEspecificacTecnCodigoQRfactura.pdf) | 0.5.0 | `f86b3c260d8a4963dbc18c5007732b53…` |
+| [FAQs de empresas de desarrollo](https://www.agenciatributaria.es/static_files/AEAT_Desarrolladores/EEDD/IVA/VERI-FACTU/FAQs-Desarrolladores.pdf) | 1.3 | `73906dc8afbbb9da35f6cb489980352b…` |
 
-Índice de los documentos, por si cambian de nombre:
-[Documentación VERI\*FACTU para desarrolladores](https://www.agenciatributaria.es/AEAT.desarrolladores/Desarrolladores/_menu_/Documentacion/Sistemas_Informaticos_de_Facturacion_y_Sistemas_VERI_FACTU/Sistemas_Informaticos_de_Facturacion_y_Sistemas_VERI_FACTU.html)
+Índice por si cambian de nombre:
+[Documentación VERI\*FACTU para desarrolladores](https://www.agenciatributaria.es/AEAT.desarrolladores/Desarrolladores/_menu_/Documentacion/Sistemas_Informaticos_de_Facturacion_y_Sistemas_VERI_FACTU/Sistemas_Informaticos_de_Facturacion_y_Sistemas_VERI_FACTU.html).
+Para comprobar si han cambiado: `curl -sL -A "Mozilla/5.0" "<url>" | shasum -a 256`.
 
-Para comprobar si han cambiado:
+Además: `DsRegistroVeriFactu.xlsx` (Diseños de registro v1.0), Descripción SWeb
+v1.0.3 y el
+[listado de errores](https://prewww2.aeat.es/static_files/common/internet/dep/aplicaciones/es/aeat/tikeV1.0/cont/ws/errores.properties)
+(ISO-8859-1, 247 códigos: 44 rechazan el envío completo, 193 la factura y 10
+producen aceptación con obligación de subsanar).
 
-```sh
-curl -sL -A "Mozilla/5.0" "<url>" | shasum -a 256
-```
+## La huella
 
-## De las Especificaciones de la huella (v0.1.2)
+**[doc]** Los ceros a la derecha son irrelevantes: *"se tratarán indistintamente
+los valores con una o dos posiciones en los decimales"*. La exigencia real no es
+un formato concreto sino **coherencia entre la huella y el XML**. "Siempre 2
+decimales" es válido, y el `241.4` del ejemplo oficial también.
 
-- **Ap. 6 — los tres vectores oficiales.** Incorporados a
-  `test/diferencial_test.rb`. Encadenan entre sí (alta → alta → anulación), así que
-  cubren también el encadenamiento. Se reproducen exactamente.
-- **Ap. 3 — ceros a la derecha irrelevantes.** *"en los campos numéricos se
-  tratarán indistintamente los valores con una o dos posiciones en los decimales,
-  sin tener relevancia los ceros a la derecha"*. La exigencia real no es un formato
-  concreto sino coherencia entre la huella y el XML. Nuestro "siempre 2 decimales"
-  es válido; el `241.4` del ejemplo oficial también.
-- **Ap. 3 — espacios al borde: la spec manda recortarlos.** No es ambigua, como
-  se creía. Nosotros rechazamos, que es más estricto. Ver `Formato.texto`.
-- **Ap. 3 — campo vacío.** Va como `Campo=` (nombre, igual, nada). Es el caso del
-  primer registro de la cadena.
+**[doc]** Los espacios al borde hay que recortarlos. La gema los **rechaza**, que
+es más estricto: casi siempre son un defecto de los datos de origen y recortar en
+silencio lo taparía.
 
-## De las Validaciones (v1.2.2)
+**[doc]** Un campo vacío va como `Campo=` (nombre, igual, nada). Es el caso del
+primer registro de la cadena.
 
-Implementadas:
+**[real]** La huella que construye la gema coincide con la que recalcula la AEAT,
+tanto en altas como en anulaciones. La serialización de la anulación es distinta
+—no lleva importes ni tipo de factura, solo IDFactura, fecha de generación y
+huella anterior— y también cuadra.
+
+**[doc]** Una huella que no coincide **no provoca rechazo**: es *error admisible*
+(ap. 4.3.1), el registro se acepta y queda anotado, pero obliga a subsanarlo.
+
+Los tres vectores oficiales del ap. 6 están en `test/diferencial_test.rb` y se
+reproducen exactamente, encadenamiento incluido.
+
+## Validaciones implementadas
+
+**[doc]** De Validaciones v1.2.2:
 
 | Ap. | Regla | Dónde |
 |---|---|---|
@@ -53,21 +71,6 @@ Implementadas:
 | 3.1.3.5 | `FacturasSustituidas` **no obligatoria**, exclusiva de F3 | `#validar_sustitutiva!` |
 | 3.1.3.6 | `ImporteRectificacion` obligatorio y exclusivo de `TipoRectificativa=S` | `#validar_importe_rectificacion!` |
 | 3.1.3.13 | Destinatarios obligatorios en F1/F3/R1-R4, prohibidos en F2/R5 | `#validar_destinatarios!` |
-
-Nótese que 3.1.3.4 y 3.1.3.5 **corrigieron** una implementación previa que las
-hacía obligatorias: era más estricta que la norma y bloqueaba casos válidos.
-
-Sobre 3.1.3.6: el commit que implementó las rectificativas (`ee25e53`) avisa de
-que esa regla estaba *deducida* y no leída en la tabla de validaciones. **Ese aviso
-ha quedado obsoleto**: se escribió antes de tener este PDF, y el apartado la
-recoge literalmente en sus dos direcciones ("Sólo deberá incluirse esta agrupación
-si el campo TipoRectificativa = 'S'" y "Obligatorio si TipoRectificativa = 'S'").
-No queda ninguna regla inferida en el código de rectificativas.
-
-Reglas incorporadas después, releyendo el PDF apartado por apartado:
-
-| Ap. | Regla | Dónde |
-|---|---|---|
 | 2 | `RechazoPrevio` distinto de "N" solo dentro de una subsanación | `#validar_subsanacion!` |
 | 8 y 9 | `FacturaSimplificadaArt7273` solo en F1/F3/R1-R4; `FacturaSinIdentifDestinatarioArt61d` solo en F2/R5 | `#validar_marcas!` |
 | 10 | `Macrodato` obligatorio si `ImporteTotal >= |100.000.000,00|` | `#validar_macrodato!` |
@@ -75,112 +78,45 @@ Reglas incorporadas después, releyendo el PDF apartado por apartado:
 | 12 | `Tercero` solo con "T", NIF distinto del emisor, sin `IDType` 07, y desde ES solo 03 | ídem y `Tercero` |
 | 13 | Reglas de `IDOtro` del destinatario (07 exige ES; desde ES solo 03 o 07) | `IdOtro.normalizar` |
 | 14 | `Cupon` solo "S" y solo con R1 o R5 | `#validar_cupon!` |
-| 15.1 | Ventanas temporales de `TipoImpositivo` (errores 1235-1236) | `Detalle#validar_en_fecha!` |
+| 15.1 | Ventanas temporales de `TipoImpositivo` | `Detalle#validar_en_fecha!` |
 | 15.3 | El recargo de equivalencia tiene que cuadrar con el tipo impositivo | ídem |
 | 15.4 | `CalificacionOperacion` S2 solo en F1/F3/R1-R4 | `#validar_inversion_sujeto_pasivo!` |
 | 15.4-15.7 | Coherencia de `Calificacion`, `OperacionExenta`, `ClaveRegimen` y recargo | `Detalle#validar_coherencia!` |
 
-Tres cosas que conviene entender de este bloque:
+Tres cosas que conviene entender:
 
 - **El 5 % ya no es declarable a secas.** Fue una rebaja temporal cuya ventana
   cerró el 30-09-2024, y como `FechaExpedicionFactura` no puede ser anterior al
   28-10-2024, hoy solo cabe informando una `FechaOperacion` dentro de la ventana.
-  Lo mismo, con otras fechas, para el 2 % y el 7,5 %. La fecha contra la que se
-  mide es `FechaOperacion`, y la de expedición si aquella falta.
+  Igual para el 2 % y el 7,5 %. Se mide contra `FechaOperacion`, o la de
+  expedición si falta.
 - **Las reglas cruzadas no caben en el objeto del que hablan.** Un `Detalle` no
-  conoce el `TipoFactura` ni la fecha de la operación, así que 15.1, 15.3 y 15.4
-  las dispara `RegistroAlta`, igual que `Envio` es quien comprueba que el emisor
-  de cada registro sea el obligado de la cabecera.
-- **Fuera de las ventanas que la norma menciona no se impone nada.** Para el 0 %
-  y el 5 % el texto solo habla de tramos concretos; inventar una restricción para
-  el resto sería repetir el error que ya hubo con 3.1.3.4 y 3.1.3.5.
+  conoce el `TipoFactura` ni la fecha de operación, así que 15.1, 15.3 y 15.4 las
+  dispara `RegistroAlta`, igual que `Envio` comprueba que el emisor de cada
+  registro sea el obligado de la cabecera.
+- **Fuera de las ventanas que la norma menciona no se impone nada.** Inventar
+  restricciones donde el texto calla repetiría el error que ya hubo al hacer
+  obligatorias 3.1.3.4 y 3.1.3.5, que no lo son.
 
-### La única regla del ap. 13 que se decidió NO implementar
+**Una regla del ap. 13 se decidió NO implementar**: "si un destinatario se
+identifica con `IDType=02`, `TipoFactura` debe ser F1/F3/R1-R4" es redundante,
+porque los tipos se reparten entre los que exigen destinatario y los que lo
+prohíben. Escribirla habría dejado una comprobación incapaz de fallar, que
+aparenta cobertura sin cubrir nada.
 
-"Si un destinatario se identifica por `IDOtro` con `IDType=02`, `TipoFactura` debe
-ser F1/F3/R1-R4". Es **redundante**: los ocho tipos de factura se reparten entre
-los que exigen destinatario (F1, F3, R1-R4) y los que lo prohíben (F2, R5), así
-que si hay un destinatario el tipo ya está en esa lista, se identifique como se
-identifique. Escribirla habría dejado una comprobación incapaz de fallar, que es
-peor que no tenerla: aparenta cobertura y no cubre nada.
+**Sin implementar**: ap. 15.2 `BaseImponibleACoste`, porque el campo no está
+soportado por la gema.
 
-### Lo que sigue sin implementarse
+**[doc] Otros errores admisibles** (se aceptan, obligan a subsanar): `ImporteTotal`
+o `CuotaTotal` que no cuadran con el desglose, con margen de ±10,00 € (no aplica
+si `ClaveRegimen` es 03, 05, 06, 08 o 09); `PrimerRegistro="S"` cuando ya existen
+registros para ese SIF y NIF; y `FechaHoraHusoGenRegistro` posterior a la hora de
+la AEAT (este exceptuado de subsanación).
 
-- **Ap. 15.2 `BaseImponibleACoste`**: el campo no está soportado por la gema, así
-  que no hay nada que validar todavía.
+## Listas de códigos
 
-### Lo que NO provoca rechazo
-
-Errores *admisibles* (ap. 4.3.1): el registro se acepta y queda registrado, pero
-hay que **subsanarlo**. Entre ellos:
-
-- Huella que no coincide con la calculada por la AEAT.
-- `ImporteTotal` o `CuotaTotal` que no cuadran con la suma del desglose, con un
-  margen de ±10,00 €. No se aplica si `ClaveRegimen` es 03, 05, 06, 08 o 09.
-- `PrimerRegistro="S"` cuando ya existen registros para ese SIF y NIF.
-- `FechaHoraHusoGenRegistro` posterior a la hora de la AEAT (exceptuado de
-  subsanación).
-
-Esto matiza la idea de que una huella mal calculada "se rechaza": no se rechaza,
-pero genera una obligación de subsanar.
-
-## Portal de pruebas externas (preproducción)
-
-Entorno abierto de la AEAT para probar presentación y consulta, sin trascendencia
-tributaria. La única condición es autenticarse con certificado electrónico.
-
-Los dominios se corresponden uno a uno con producción:
-
-| Preproducción | Producción | Uso |
-|---|---|---|
-| `prewww1.aeat.es` | `www1.agenciatributaria.gob.es` | Web services, certificado normal |
-| `prewww2.aeat.es` | `www2.agenciatributaria.gob.es` | Estáticos (de aquí salen los XSD) |
-| `prewww10.aeat.es` | `www10.agenciatributaria.gob.es` | Web services con **certificado de sello** |
-
-Esto confirma la tabla `ENDPOINTS` de `Transporte`, incluida la separación del
-endpoint de sello, que es el detalle menos documentado de todos.
-
-**Aviso operativo, del propio portal:** es para pruebas *puntuales*. Nada de
-pruebas masivas ni de validaciones integradas en procesos de producción; un uso
-que consideren abusivo puede acabar en bloqueo de acceso. Relevante aquí porque
-`Envio` admite lotes de 1000 registros: contra preproducción, moderación.
-
-### La cadena TLS ya no necesita `ca_file`
-
-El 21 de noviembre de 2025 la AEAT renovó los certificados de la sede electrónica
-y del dominio `*.aeat.es`. Comprobado el 06-08-2026 contra los cinco endpoints,
-todos validan con **`Verify return code: 0 (ok)`** usando el almacén de confianza
-del sistema:
-
-```
-prewww1/prewww10.aeat.es      *.aeat.es
-                              <- Entrust OV TLS Issuing RSA CA 2
-                              <- Sectigo Public Server Authentication Root R46
-                              <- USERTrust RSA Certification Authority
-
-www1/www2/www10.gob.es        agenciatributaria.gob.es (QWAC)
-                              <- Sectigo Qualified Website Authentication CA R35
-                              <- USERTrust RSA Certification Authority
-```
-
-Todas son CA públicas presentes en cualquier almacén estándar, así que **no hay
-que empaquetar raíces propias**. Esto invalida el punto "pendiente de verificar"
-número 3 del traspaso original ("la AEAT sirve con cadena propia"): era cierto
-antes de la renovación, ya no.
-
-`ca_file` sigue existiendo en `Transporte` por si hace falta anclar la cadena en
-un entorno concreto, pero deja de ser el arreglo por defecto ante un fallo de
-verificación. Ahí lo probable es un almacén de confianza anticuado o un proxy
-corporativo interceptando el TLS.
-
-## Diseños de registro (Excel v1.0)
-
-`DsRegistroVeriFactu.xlsx`, 11 hojas. Las relevantes en alcance:
-
-### Listas de códigos (hoja "6)Listas")
-
-Son la fuente autorizada de los enumerados que las Validaciones citan sin
-desarrollar:
+**[doc]** De la hoja "6)Listas" del Excel de diseños, que es la fuente autorizada
+de los enumerados que las Validaciones citan sin desarrollar:
 
 | Lista | Campo | Valores |
 |---|---|---|
@@ -198,173 +134,101 @@ desarrollar:
 | L16 | `GeneradoPor` | E expedidor, D destinatario, T tercero |
 | L17 | `RechazoPrevio` | N, S, X |
 
-L10 confirma que **E7 y E8 no son valores generales**: solo se admiten con
-IGIC. Nuestra constante `Detalle::EXENCIONES` los incluye siempre y es por tanto
-demasiado permisiva.
+L10 confirma que **E7 y E8 solo se admiten con IGIC**; `Detalle::EXENCIONES` los
+incluye siempre y es por tanto demasiado permisiva.
 
-L1E–L4E son del registro de eventos: fuera de alcance.
+`ClaveRegimen = 21` no aparece en L8A ni L8B pero sí en el XSD y en el ap. 15.6.11
+de Validaciones. El Excel es v1.0 y Validaciones v1.2.2: se sigue a la más
+reciente.
 
-Discrepancia de versiones: `ClaveRegimen = 21` no aparece en L8A ni en L8B, pero
-sí en el XSD y en el ap. 15.6.11 de las Validaciones (que le dedica un apartado
-para IGIC). El Excel es v1.0 y las Validaciones v1.2.2, así que se sigue a las
-más recientes.
+## Alcance no cubierto: las operativas de subsanación y rechazo
 
-### Cuadros de operativa (hojas "A" y "B") — afectan al ALCANCE
+**[doc]** Los cuadros de operativa del Excel definen **seis operativas de alta y
+cuatro de anulación**, cada una distinguida por una combinación de campos:
 
-Esto no es una tabla de formatos: define **las seis operativas de alta y las
-cuatro de anulación**, y cada una se distingue por una combinación de campos que
-esta gema **todavía no emite**.
-
-Alta, según `Subsanacion` + `RechazoPrevio`:
-
-| Operativa | `Subsanacion` | `RechazoPrevio` |
+| Operativa de alta | `Subsanacion` | `RechazoPrevio` |
 |---|---|---|
 | Alta inicial ("normal") | ausente o N | ausente o N |
 | Alta de subsanación | S | ausente o N |
 | Alta por rechazo de subsanación | S | S |
 | Alta por rechazo / sin registro previo | S | X |
 
-Anulación, según `SinRegistroPrevio` + `RechazoPrevio`: las cuatro combinaciones
-de ambos campos.
-
-**Consecuencia:** hoy solo sabemos construir la primera fila de cada cuadro. Y eso
-importa más de lo que parece, porque una huella que no cuadra es *error admisible*
-y **obliga a subsanar** (Validaciones ap. 4.3.1): sin `Subsanacion`, quien reciba
-un "AceptadoConErrores" no tiene forma de corregirlo con esta gema. El mecanismo
-de corrección entero depende de estos campos.
+La gema **solo construye la primera fila de cada cuadro**, y eso importa más de lo
+que parece: como una huella que no cuadra es error admisible y obliga a subsanar,
+quien reciba un `AceptadoConErrores` no tiene forma de corregirlo con esta gema.
+El mecanismo de corrección entero depende de estos campos.
 
 `RechazoPrevio = X` es además el camino de migración desde NO VERI\*FACTU:
-registros que existen en el SIF del obligado pero nunca se remitieron.
+registros que existen en el SIF pero nunca se remitieron.
 
-## Servicios web (Descripción SWeb v1.0.3)
+## Endpoints, TLS y certificados
 
-- **Ap. 6.8** — ceros a la izquierda prohibidos en numéricos (`01` mal, `1` bien),
-  pero tras el separador decimal son irrelevantes: *"12345 es lo mismo que 12345.0
-  y que 12345.00"*. Nuestro formato de 2 decimales es válido, y también lo es el
-  `241.4` del ejemplo oficial.
-- **Ap. 6.9** — solo hay que escapar `&` como `&amp;` y `<` como `&lt;`.
-  Respalda la asimetría huella-cruda / XML-escapado.
-- **Respuesta**: `EstadoEnvio` (Correcto / ParcialmenteCorrecto / Incorrecto),
-  `EstadoRegistro` (Correcto / AceptadoConErrores / Incorrecto) y
-  `EstadoRegistroDuplicado` (Correcta / AceptadaConErrores / Anulada).
-- **`TiempoEsperaEnvio`**: esperar esos segundos **o** acumular hasta el límite de
-  lote, lo que ocurra primero.
-- **WSDL** de pruebas: `https://prewww2.aeat.es/static_files/common/internet/dep/aplicaciones/es/aeat/tikeV1.0/cont/ws/SistemaFacturacion.wsdl`
+**[doc]** Los dominios de preproducción se corresponden uno a uno con producción:
 
-### Códigos de error
-
-Listado completo en `https://prewww2.aeat.es/static_files/common/internet/dep/aplicaciones/es/aeat/tikeV1.0/cont/ws/errores.properties`
-(ISO-8859-1). **247 códigos** en tres categorías: 44 rechazan el envío completo,
-193 rechazan la factura, y **10** producen aceptación con obligación de subsanar.
-
-## Contrastado contra preproducción (06-08-2026)
-
-**Primer registro aceptado.** `EstadoEnvio=Correcto`, `EstadoRegistro=Correcto`,
-CSV emitido. Lo que eso demuestra, por orden de importancia:
-
-- **La huella coincide con la que recalcula la AEAT.** Un desajuste habría dado
-  `AceptadoConErrores` con obligación de subsanar (ap. 4.3.1), y salió `Correcto`
-  limpio. Es la validación que ningún test propio puede dar: confirma la cadena
-  de serialización, el formateo de importes y la marca temporal con offset,
-  todo contra el recálculo real del servicio.
-- El XML pasa las validaciones de negocio, no solo el XSD.
-- El transporte completo funciona: mTLS, sobre SOAP, endpoint y lectura de la
-  respuesta.
-
-**Segundo registro encadenado, también aceptado.** `RegistroAnterior` con los
-cuatro campos del primero, respuesta `Correcto` y cero a subsanar. La AEAT
-reconoció el eslabón: el encadenamiento funciona de punta a punta.
-
-Detalle metodológico que conviene recordar: se pudo determinar *a posteriori* que
-el segundo registro iba encadenado sin más dato que su huella, recalculándola con
-y sin eslabón previo y viendo cuál coincidía. La huella es determinista, así que
-sirve para reconstruir qué se envió realmente cuando el registro de la aplicación
-no lo aclara.
-
-Lo que **NO** demuestra, y conviene no dar por bueno: fueron dos altas F1 con una
-línea de desglose cada una, enviadas de una en una. Siguen sin probarse contra el
-servicio real las anulaciones, las rectificativas, la subsanación y los lotes con
-más de un registro por envío. Tampoco se ejercitaron las validaciones de rechazo:
-una factura válida no recorre esos caminos.
-
-Primeros envíos reales a `prewww1.aeat.es` con un certificado de representante de
-la FNMT. Lo que confirman:
-
-- **mTLS funciona sin `ca_file`.** `HTTP 200` a la primera. Cierra el punto 3 de
-  "pendiente de verificar" del traspaso, que ya se había descartado inspeccionando
-  la cadena TLS y ahora tiene una prueba de verdad.
-- **`Certificado#sello?` acierta el caso negativo.** Un certificado de
-  representante da `false` y va a `prewww1`, que es lo correcto. Queda sin probar
-  el caso positivo (un certificado de sello real).
-- **El sobre SOAP llevaba dos declaraciones XML.** Respuesta:
-  `Codigo[102].Error interno en el servidor`. Era un fallo de parseo, no de
-  negocio, y por eso el mensaje no orientaba. Corregido en `Transporte#envolver`.
-- **El NIF se valida en dos pasos, con códigos distintos**: `4116` si el dígito de
-  control no cuadra y `4104` si el formato es correcto pero el NIF no consta como
-  obligado. Un NIF inventado con forma plausible (`B12345678`) cae en el 4116.
-- **Los fallos de servicio llegan como SOAP Fault**, no como
-  `RespuestaSuministro`, con el código dentro de `faultstring` en el formato
-  `Codigo[NNNN].descripción`. `Respuesta` lo extrae.
-- **La identificación del obligado es por el PAR NIF + NombreRazon.** Con el NIF
-  correcto y un nombre que no cuadre con el censo, la AEAT responde 4104 "el NIF
-  no está identificado", que apunta al campo equivocado. El detalle del error sí
-  devuelve los dos campos, y ahí está la pista. Lo mismo aplica al destinatario,
-  con el código 1239.
-- **`Respuesta` leyó correctamente una respuesta real**: `EstadoEnvio`,
-  `TiempoEsperaEnvio` y la línea con su código y descripción.
-- **`TiempoEsperaEnvio` devolvió 60**, el valor inicial que fija el art. 16.2 de
-  la Orden.
-
-### Códigos que confirman reglas deducidas del PDF
-
-Estos existen como error propio de la AEAT, lo que respalda las validaciones que
-se implementaron leyendo el ap. 15 de Validaciones:
-
-| Código | Regla | Dónde se implementa |
+| Preproducción | Producción | Uso |
 |---|---|---|
-| 1237 | N1/N2 con IVA no admiten tipo, cuota ni recargo | `Detalle#validar_calificacion!` |
-| 1238 | Una exenta no admite esos cuatro campos | `Detalle#validar_exenta!` |
-| 1245 | ClaveRegimen obligatoria con IVA/IPSI/IGIC | `Detalle#validar_clave_regimen!` |
-| 1232-1234 | Reglas cruzadas de IDType y CodigoPais | `Destinatario#normalizar_id_otro` |
-| 1235-1236 | Ventanas temporales de TipoImpositivo | `Detalle#validar_en_fecha!` |
+| `prewww1.aeat.es` | `www1.agenciatributaria.gob.es` | Web services, certificado normal |
+| `prewww2.aeat.es` | `www2.agenciatributaria.gob.es` | Estáticos (de aquí salen los XSD) y cotejo del QR |
+| `prewww10.aeat.es` | `www10.agenciatributaria.gob.es` | Web services con **certificado de sello** |
 
-## Cadenas, instalaciones y facturación desde varias fuentes
+**Aviso operativo del propio portal:** preproducción es para pruebas *puntuales*.
+Nada de pruebas masivas ni de validaciones integradas en procesos de producción;
+un uso que consideren abusivo puede acabar en bloqueo de acceso.
 
-La cadena es **una por SIF + NIF obligado**, no una por serie (ver arriba). Pero
+**[real] `ca_file` no hace falta.** Tras la renovación de noviembre de 2025, los
+cinco endpoints validan con el almacén de confianza del sistema (`Verify return
+code: 0`). Sirven cadenas de CA públicas: Entrust OV TLS y Sectigo, ambas bajo
+USERTrust RSA. `ca_file` sigue existiendo por si hay que anclar la cadena en algún
+entorno, pero ante un fallo de verificación lo probable es un almacén anticuado o
+un proxy interceptando el TLS. Nunca `VERIFY_NONE`.
+
+**[real]** El mTLS funciona con certificado de representante de la FNMT, y
+`Certificado#sello?` acierta el caso negativo (va a `prewww1`, que es lo
+correcto).
+
+**[?] El caso del sello queda sin contrastar, y seguirá así.** La AEAT no emite
+certificados de prueba —preproducción exige un certificado real de una CA
+reconocida— y el de sello de entidad de la FNMT es de pago y solo para personas
+jurídicas. Con él hay que declarar `sello: true` explícitamente en vez de fiarse
+de la heurística sobre el sujeto del certificado, que nunca ha visto un sello
+real.
+
+## Cadenas, instalaciones y varias fuentes de facturación
+
+**[doc]** La cadena es **una por SIF + NIF obligado**, no una por serie. Pero
 "SIF" no es el producto: lo identifica el bloque `SistemaInformatico` completo, y
-dentro de él el `NumeroInstalacion` es lo que distingue instalaciones.
+dentro de él el `NumeroInstalacion` distingue instalaciones. Las FAQs:
 
-Las FAQs de desarrolladores (v1.3, 04-12-2025) lo resuelven explícitamente:
+> cada una de esas facturaciones distintas (sean de distintos OEF o del mismo OEF
+> pero de distintos centros de facturación independientes, como tiendas) debe
+> tener un nº de instalación propio y distinto al resto (pasado, presente o
+> futuro) **porque se consideran SIF independientes, como si fueran "SIF
+> virtuales"**
 
-> si se utiliza un SIF que permite llevar distintas facturaciones (...) cada una
-> de esas facturaciones distintas (sean de distintos OEF o del mismo OEF pero de
-> distintos centros de facturación independientes, como tiendas) debe tener un
-> nº de instalación propio y distinto al resto (pasado, presente o futuro)
-> **porque se consideran SIF independientes, como si fueran "SIF virtuales"**
+Con varias fuentes (tiendas, TPV, web, un job) hay dos arquitecturas válidas: un
+solo SIF, que obliga a serializar todas las fuentes contra una cadena con un lock
+de base de datos; o un SIF virtual por fuente, con cadenas independientes y sin
+lock entre ellas. La segunda es la que la AEAT contempla expresamente y la que
+evita el problema de raíz.
 
-**Consecuencia de diseño.** Si las facturas entran desde varias fuentes (tiendas,
-TPV, web, un job de fondo), hay dos arquitecturas válidas:
+El `NumeroInstalacion` **no puede repetirse nunca**, ni al reinstalar sobre la
+misma máquina. Las FAQs recomiendan un timestamp de instalación o un secuencial
+propio del obligado. `IndicadorMultiplesOT` va a "S" cuando un SIF en la nube
+atiende a varios obligados a la vez.
 
-1. **Un solo SIF**: una cadena, y hace falta serializar TODAS las fuentes contra
-   ella con un lock de base de datos. Es la opción que obliga a coordinación
-   distribuida.
-2. **Un SIF virtual por fuente**, cada uno con su `NumeroInstalacion`: cadenas
-   independientes, sin lock entre fuentes. Es la vía que la AEAT contempla
-   expresamente y la que evita el problema de raíz.
+**Regla dura de diseño: la gema no autogenera nunca un `NumeroInstalacion`.** Si
+lo hiciera, un contenedor que se recrea en cada despliegue produciría una
+instalación por despliegue —y en el límite una por factura—, cada registro saldría
+`PrimerRegistro="S"`, la AEAT lo aceptaría y la cadena dejaría de demostrar nada.
+Lo que lo impide no es técnico: las FAQs prohíben que la identidad del SIF cambie
+"con cada factura ni con cada sesión o arranque del producto", la trazabilidad es
+obligación legal del productor (art. 29.2.j LGT) y certificar por declaración
+responsable un SIF que no cumple el RD 1007/2023 es sancionable.
 
-El `NumeroInstalacion` **no puede repetirse nunca**, ni siquiera al reinstalar
-sobre la misma máquina. Las FAQs recomiendan un timestamp de instalación o un
-secuencial propio del obligado.
+## La AEAT no impide bifurcar la cadena
 
-`IndicadorMultiplesOT` va a "S" cuando un SIF en la nube atiende a varios
-obligados a la vez.
-
-### La AEAT no impide bifurcar la cadena (comprobado)
-
-Se envió dos veces el mismo `RegistroAnterior`: dos altas distintas apuntando
-ambas al **mismo** predecesor. **La AEAT aceptó las dos con `Correcto`**, sin
-aviso ni error admisible. Verificado recalculando las huellas de las dos contra
-el eslabón común.
+**[real]** Se enviaron dos altas distintas apuntando ambas al **mismo**
+predecesor. La AEAT aceptó las dos con `Correcto`, sin aviso ni error admisible.
 
 ```
 Registro 1  (PrimerRegistro)
@@ -376,247 +240,151 @@ Es el hallazgo con más consecuencias de diseño de toda la integración:
 
 - **No hay red de seguridad.** La AEAT no valida al recibir que el
   `RegistroAnterior` sea de verdad el último anotado. Una condición de carrera
-  —dos procesos leyendo a la vez cuál era el último— produce una cadena rota que
-  se acepta en silencio y no se descubre al enviar.
-- **El lock no es una optimización, es lo único que sostiene la integridad.** Si
-  se elige la arquitectura de un solo SIF, ese lock por SIF+NIF es obligatorio.
-  Con SIF virtuales por fuente el problema se reparte, pero dentro de cada uno
-  sigue haciendo falta.
+  produce una cadena rota que se acepta en silencio y no se descubre al enviar.
+- **El lock no es una optimización, es lo único que sostiene la integridad**, y
+  dentro de la gema lo respalda un índice único sobre `(cadena_id,
+  huella_anterior)`.
 - **Que no lo rechacen no significa que no lo vean.** La AEAT conserva todos los
-  registros, y la lista L1E de tipos de anomalía incluye justamente
-  "Trazabilidad-cadena-huella: el campo huella del registro anterior no se
-  corresponde con la huella del registro anterior" (07 y 08). Lo que no hay es
-  detección síncrona.
+  registros, y la lista L1E de tipos de anomalía incluye "el campo huella del
+  registro anterior no se corresponde con la huella del registro anterior". Lo que
+  no hay es detección síncrona.
 
-Corolario para las pruebas: reenviar el mismo `VF_ANTERIOR_*` dos veces "funciona"
-y no demuestra nada sobre la corrección de la cadena.
+**La huella anterior no la da la AEAT**: hay que guardarla. Cada registro almacena
+la suya y el siguiente lee la última de su cadena bajo lock.
 
-### De dónde sale la huella anterior
+## Qué queda anotado: la consulta devuelve una foto, no un libro
 
-**No la da la AEAT.** Hay que guardarla: cada registro almacena su propia huella,
-y el siguiente lee la última de su cadena bajo un lock. La AEAT no valida de forma
-síncrona que el `RegistroAnterior` sea realmente el último anotado, así que un
-error de coordinación no se detecta al enviar: la integridad de la cadena es
-responsabilidad de quien la construye.
+**[real]** Consultada una cadena con **6 registros de facturación sobre 4
+facturas**, la consulta devolvió **4 filas**: una por factura, con su estado
+actual, no el histórico. De ahí tres conclusiones:
 
-Para reconstruir el estado tras un desastre existe el servicio de **consulta**
-(`ConsultaLR.xsd`, versionado pero sin implementar). No sirve para el camino
-caliente: hay control de flujo entre envíos y el portal desaconseja el uso masivo.
-
-## Ejemplos de registro
-
-`ejemploRegistro.xml` y `ejemploRegistro-firmado-epes-xades4j.xml` (fuera del
-repositorio). El segundo es el primero más un `ds:Signature` XAdES-EPES adosado,
-lo que confirma que la firma es un añadido opcional y no altera el resto del
-documento: coherente con implementar solo VERI\*FACTU.
-
-## Campaña contra preproducción: lote, anulación, rectificativa y subsanación
-
-Hasta aquí solo se habían probado contra el servicio real dos altas encadenadas.
-`examples/campana_pruebas.rb` cubre en cuatro envíos lo que quedaba, sobre una
-cadena limpia (instalación nueva = SIF virtual propio). Ejecutada el 07-08-2026,
-las cuatro fases salieron `EstadoEnvio=Correcto`, con todos los registros
-`Correcto`: ningún error admisible y ningún `RegistroDuplicado`.
-
-| Fase | Qué se envió | Resultado |
-|---|---|---|
-| lote | 3 altas F1 encadenadas ENTRE SÍ en un mismo envío | Correcto (3/3) |
-| anulacion | anulación de la 3ª del lote | Correcto |
-| rectificativa | R1 sustitutiva de la 2ª, con `ImporteRectificacion` | Correcto |
-| subsanacion | la 1ª otra vez, `Subsanacion="S"`, otros importes | Correcto |
-
-Lo que cada una resuelve:
-
-- **Un envío admite una cadena entera, no solo un eslabón.** La AEAT no exige una
-  petición por registro: los tres del lote se encadenaron entre sí dentro del
-  mismo `RegFactuSistemaFacturacion` y se anotaron los tres. Para la capa Rails
-  esto separa dos cosas que es fácil confundir: el **cálculo** de la cadena sigue
-  necesitando el lock por SIF+NIF, pero el **transporte** puede agrupar hasta
-  1000 registros por petición.
-- **`TiempoEsperaEnvio` no escala con el tamaño del lote**: 60 s tanto tras el
-  lote de tres como tras cada envío de uno. Agrupar sale, por tanto, mucho más
-  barato que encadenar peticiones: mismo coste de espera, más registros dentro.
-- **La huella de anulación es correcta.** Su serialización canónica no lleva
-  importes ni tipo de factura, solo IDFactura, fecha de generación y huella
-  anterior; nunca se había contrastado contra el recálculo de la AEAT.
-- **La R1 sustitutiva cuadra.** Se aceptó `TipoRectificativa='S'` +
-  `FacturasRectificadas` + `ImporteRectificacion` (base 100 / cuota 21) sobre un
-  desglose propio de 150 / 31,50. Las reglas de coherencia que impone la gema, y
-  que el XSD deja opcionales, no son más estrictas que la norma.
-- **`Subsanacion="S"` evita el rechazo por duplicado.** Se reenvió la primera
-  factura con el MISMO `IDFactura` (emisor, número de serie y fecha de
-  expedición) e importes distintos, y se anotó como `Correcto`, sin
-  `RegistroDuplicado` y sin error. Es la confirmación de que subsanar no es
-  reenviar: el mismo cuerpo sin la marca habría chocado con "Registro de
-  facturación duplicado".
-
-### Lo que esta campaña NO demuestra
-
-Que la AEAT acepte un envío no dice qué queda anotado. Es la misma cautela que
-obliga la cadena bifurcada (ver arriba): **no valida al recibir lo que sí
-conserva después**. En concreto, no se ha comprobado que la subsanación haya
-sustituido de verdad al registro original, ni que la anulación haya dejado la
-factura en estado "Anulada". Para eso hace falta un cliente de `ConsultaLR`, cuyo
-XSD ya está versionado pero que no está implementado. Mientras no exista, el
-alcance real de lo verificado es "la AEAT lo admite", no "la AEAT lo interpreta
-como esperamos".
-
-## Qué queda anotado de verdad: la consulta responde lo que el envío no puede
-
-Con el cliente de `ConsultaLR` se consultó la cadena de la campaña anterior
-(instalación `CAMP-20260807115225`, periodo 2026-08). Se habían enviado **6
-registros de facturación sobre 4 facturas**. La consulta devolvió **4 filas**,
-con `IndicadorPaginacion=N`: no faltaba nada por paginar.
-
-| Factura | Estado | Huella devuelta | De qué registro es |
-|---|---|---|---|
-| `/1` | Correcto, `Subsanacion=S` | `03EEC28D…` | la **subsanación** (el alta original era `42229E64…`) |
-| `/2` | Correcto | `2411E3DA…` | su alta, intacta |
-| `/3` | **Anulado** | `3A505BC9…` | la **anulación** (el alta original era `8584D092…`) |
-| `/R` | Correcto | `0CD38157…` | la rectificativa |
-
-### La consulta devuelve una foto, no un libro
-
-Una fila por **factura**, con su estado **actual**; no el histórico de registros
-de facturación. De ahí salen las tres conclusiones:
-
-- **La subsanación sustituye al original, no convive con él.** La factura `/1`
-  aparece una sola vez, con `ImporteTotal 133.1` (los importes corregidos, no los
-  121,00 del alta) y `TimestampUltimaModificacion` a la hora de la subsanación.
-  Esto cierra la pregunta que la respuesta al envío dejaba abierta: `Correcto` al
+- **La subsanación sustituye al original, no convive con él.** La factura
+  subsanada aparece una sola vez, con los importes corregidos y
+  `TimestampUltimaModificacion` a la hora de la subsanación. `Correcto` al
   subsanar significa de verdad "he reemplazado el registro anterior".
-- **La anulación surte efecto.** `/3` queda en `Anulado`, un estado que
-  `RespuestaSuministro` ni siquiera puede expresar: sus tres valores son
-  Correcto, AceptadoConErrores e Incorrecto. Sin este servicio no hay forma de
-  observarlo.
-- **La cadena NO se puede reconstruir entera desde la consulta.** Es la cara B de
-  lo anterior: los eslabones sustituidos desaparecen. En esta consulta, `/2`
-  apunta a `42229E64…` (el alta original de `/1`) y la anulación apunta a
-  `8584D092…` (el alta original de `/3`); las dos huellas son correctas y la
-  cadena está intacta, pero sus eslabones ya no se devuelven, así que ambos
-  registros *parecen* huérfanos. Por lo mismo, la consulta informó de **cero**
-  registros marcados `PrimerRegistro`: el primero de la cadena era el alta de
-  `/1`, que fue sustituida.
+- **La anulación surte efecto**: la factura queda en `Anulado`, un estado que
+  `RespuestaSuministro` ni siquiera puede expresar (solo conoce Correcto,
+  AceptadoConErrores e Incorrecto). Sin este servicio no hay forma de observarlo.
+- **La cadena NO se puede reconstruir entera desde la consulta.** Es la cara B: los
+  eslabones sustituidos desaparecen, así que los registros que encadenaban tras
+  ellos *parecen* huérfanos aunque la cadena esté intacta. Por lo mismo, se
+  informaron **cero** registros marcados `PrimerRegistro`, porque el primero de la
+  cadena había sido sustituido.
 
-Corolario para la capa Rails: **el histórico de la cadena hay que guardarlo uno
-mismo**. La AEAT no lo devuelve, y la consulta sirve para reconciliar el estado
-de cada factura, no para auditar el encadenamiento. Detectar una bifurcación
-sigue dependiendo del propio SIF; el servicio de consulta no lo resuelve.
+**Corolario para la capa Rails: el histórico de la cadena hay que guardarlo uno
+mismo.** La consulta sirve para reconciliar el estado de cada factura, no para
+auditar el encadenamiento. Detectar una bifurcación sigue dependiendo del SIF.
 
-### Detalles menores confirmados de paso
+Detalles confirmados de paso: las huellas devueltas **coinciden** con las
+almacenadas; los importes vuelven **sin ceros a la derecha** (`181.5`, `121`,
+`133.1`); y el orden de las filas **no es cronológico**, así que no conviene
+apoyarse en él.
 
-- Las tres huellas que el diario de la campaña podía contrastar **coinciden** con
-  las almacenadas. Lo que construimos es lo que la AEAT guardó.
-- Los importes vuelven **sin ceros a la derecha**: `181.5`, `121`, `133.1`. Es el
-  mismo criterio que ya consta para la huella, y confirma que la exigencia no es
-  un formato concreto sino coherencia.
-- El orden de las filas **no es cronológico** (los `TimestampUltimaModificacion`
-  vuelven desordenados), así que no conviene apoyarse en él para nada.
+**[real] `Subsanacion="S"` evita el rechazo por duplicado.** Reenviar una factura
+con el mismo `IDFactura` e importes distintos se anota como `Correcto`, sin
+`RegistroDuplicado`. El mismo cuerpo sin la marca habría chocado con "Registro de
+facturación duplicado".
 
-## La URL del código QR: la AEAT NO la devuelve
+## Reconciliación
 
-Conviene decirlo explícito porque es la suposición natural y es falsa: **la URL de
-cotejo no llega en ninguna respuesta**. No aparece en `RespuestaSuministro.xsd`,
-ni en `RespuestaConsultaLR.xsd`, ni se menciona en el PDF de Validaciones. La
-construye el propio SIF con datos que ya tiene.
+**[real]** Dos altas remitidas y reconciliadas a continuación: 2 facturas
+locales, 2 filas de la AEAT, 0 divergencias.
+
+**[real] La AEAT imputa el periodo por FECHA DE EXPEDICIÓN.** Es lo que asume
+`Reconciliacion#vigentes` al elegir qué facturas locales revisar.
+
+**[?] El cotejo del `SistemaInformatico` lo aplica el servidor: probable, no
+comprobado.** El razonamiento es indirecto: había 4 facturas anotadas bajo el
+mismo NIF y el mismo periodo en otra instalación, y la consulta filtrada devolvió
+solo las 2 de la instalación consultada. **Falta la premisa**: que esas 4
+siguieran almacenadas ese día. Preproducción no tiene trascendencia tributaria y
+nada garantiza que no purguen datos, así que "las purgaron" explica lo observado
+igual de bien. Se cierra pidiendo el mismo periodo con el SIF de la otra
+instalación.
+
+Consecuencia práctica que no depende de eso: **el SIF que se manda en el filtro
+tiene que ser el mismo con el que se anotaron los registros**. Con uno distinto la
+respuesta viene `SinDatos`, y eso se disfraza de "no consta ninguna factura". Por
+eso `Reconciliacion` filtra además en cliente por el `NumeroInstalacion` de cada
+fila.
+
+## El código QR: la AEAT NO devuelve la URL
+
+**[doc]** Conviene decirlo explícito porque es la suposición natural y es falsa:
+la URL de cotejo no llega en ninguna respuesta. No está en
+`RespuestaSuministro.xsd`, ni en `RespuestaConsultaLR.xsd`, ni se menciona en
+Validaciones. La construye el propio SIF con datos que ya tiene.
 
 ```
 Pruebas:     https://prewww2.aeat.es/wlpl/TIKE-CONT/ValidarQR?
 Producción:  https://www2.agenciatributaria.gob.es/wlpl/TIKE-CONT/ValidarQR?
 ```
 
-Cuatro parámetros: `nif`, `numserie`, `fecha` (DD-MM-AAAA) e `importe`. Los cuatro
-están en el propio `RegistroAlta` en el momento de construirlo.
+Cuatro parámetros: `nif`, `numserie`, `fecha` (DD-MM-AAAA) e `importe`.
 
-- **El host NO es el del SOAP.** El cotejo va contra `prewww2` /
-  `www2.agenciatributaria.gob.es`, mientras que los envíos van por `prewww1` y
-  `prewww10` (`www1`/`www10` en producción). Es un endpoint aparte.
-- **Hay una URL distinta para NO VERI\*FACTU** (`ValidarQRNoVerifactu`), fuera del
-  alcance de esta gema.
-- **El URL encoding no es opcional, y el caso es alcanzable.** El ap. 4 del PDF
-  dedica un apartado a ello y pone como contraejemplo un `numserie=12345678&G33`
-  sin codificar, que parte la URL. `Formato.num_serie` prohíbe `"` `'` `<` `>` `=`
-  pero sí admite `&`, `%`, `+` y espacios, así que un número de serie perfectamente
-  válido para el envío puede romper el QR si se concatena sin codificar. UTF-8.
-- El importe del ejemplo oficial es `241.4`, sin cero final: mismo criterio que ya
-  consta para la huella.
+- **El host no es el del SOAP.** El cotejo va por `prewww2`/`www2`, los envíos por
+  `prewww1`/`prewww10`.
+- **El URL encoding no es opcional y el caso es alcanzable.** `Formato.num_serie`
+  admite `&`, `%`, `+` y espacios, así que un número de serie válido para el envío
+  puede partir la URL si se concatena sin codificar. UTF-8.
+- Hay una URL distinta para NO VERI\*FACTU (`ValidarQRNoVerifactu`), fuera de
+  alcance.
 
 **Consecuencia de diseño.** Como el QR no depende de la respuesta de la AEAT, se
-puede generar en el mismo momento en que se crea el registro y bajo el mismo lock,
-antes de enviar nada. La impresión de la factura queda desacoplada del envío
-asíncrono. Ojo al matiz: que el QR sea *válido* no significa que la factura
-*conste*; si el envío nunca llega a completarse, quien escanee obtendrá un "no
-consta". El QR se genera al crear, pero el estado de envío hay que seguirlo igual.
+genera al crear el registro y bajo el mismo lock, antes de enviar nada: la
+impresión de la factura queda desacoplada del envío asíncrono. Ojo al matiz: que
+el QR sea *válido* no significa que la factura *conste*. Si el envío nunca se
+completa, quien escanee obtendrá un "no consta".
 
-## Inmediatez frente a control de flujo: los lotes NO son el modo normal
+## Ritmo de remisión: los lotes NO son el modo normal
 
-Las FAQs (v1.3) son tajantes sobre el ritmo de remisión, y conviene tenerlo claro
-antes de diseñar la capa de envío:
+**[doc]** Las FAQs son tajantes:
 
 > debe asegurarse que la generación del RF se produzca de forma "simultánea"
 > (entiéndase inmediata o sin demora apreciable) a la expedición de la factura
 > para su instantáneo almacenamiento o remisión a la AEAT
 
-Es decir: **el modo normal es una factura, un envío, en el acto**. Nadie obliga a
-un comercio pequeño a acumular. Agrupar hasta 1000 registros es un *techo* del
-esquema para quien factura rápido, no un objetivo de diseño.
+Un comercio que factura cada diez minutos mandará siempre un registro por
+petición. El tope de 1000 es un techo para quien factura rápido, no un objetivo:
+el tamaño del lote lo dicta el ritmo de facturación, no una decisión de diseño.
 
-Las FAQs añaden dos matices por si el envío inmediato no sale:
+**[real] Un envío admite una cadena entera, no solo un eslabón.** Varios registros
+encadenados entre sí dentro del mismo `RegFactuSistemaFacturacion` se anotan
+todos. Esto separa dos cosas fáciles de confundir: el **cálculo** de la cadena
+sigue necesitando el lock por SIF+NIF, pero el **transporte** puede agrupar.
 
-- La conservación local **no está regulada** en modalidad VERI\*FACTU, porque los
-  registros los conserva la AEAT. Aun así, las propias FAQs dicen que "parece
-  lógico" conservarlos. Para esta gema no es opcional: sin tabla local no hay
-  histórico de la cadena (ver más arriba: la consulta devuelve una foto por
-  factura, no el libro).
-- Para subsanaciones y anulaciones **no hay plazo máximo fijado**; se hacen "en
-  cuanto sea posible".
+**[real] `TiempoEsperaEnvio` no escala con el tamaño del lote**: 60 s tanto tras
+un lote de tres como tras un envío de uno. Es el valor inicial que fija el art.
+16.2 de la Orden. Agrupar sale más barato que encadenar peticiones: mismo coste de
+espera, más registros dentro. Medido solo en preproducción, y la AEAT lo devuelve
+en cada respuesta precisamente porque puede variarlo.
 
-### Lo que sigue sin saberse: qué vale `TiempoEsperaEnvio` en producción
-
-Ni el PDF de Validaciones ni el XSD documentan la semántica del campo: el esquema
-lo declara y no lo anota. Lo único medido es que **preproducción devolvió 60 s en
-los cuatro envíos de la campaña, con lotes de 1 y de 3 registros**, o sea que no
-escalaba con el tamaño del lote. De ahí NO se puede concluir que en producción sea
-60 s, ni que ese valor sea fijo: la AEAT lo devuelve en cada respuesta justamente
-porque es un valor, no una constante.
-
-Consecuencia práctica para el diseño, que no depende de resolver esta incógnita:
-el job envía **lo que haya pendiente** cuando la espera vigente ha vencido. Un
-comercio que factura cada diez minutos manda siempre un registro por petición y
-nunca agrupa; un TPV con mucho volumen agrupa solo porque le llegan más facturas
-de las que caben en una ventana. **El tamaño del lote es una consecuencia del
-ritmo de facturación, no una decisión.** El mismo código sirve para los dos.
+**[doc]** `TiempoEsperaEnvio` significa esperar esos segundos **o** acumular hasta
+el límite de lote, lo que ocurra primero.
 
 ## Obligaciones del SIF que no se leen en el esquema (OM art. 7.i)
 
-Las FAQs (ap. 15) recogen el art. 7.i) de la Orden HAC/1177/2024, que impone dos
-comprobaciones **antes de generar cada registro** y que no se deducen de ningún
-XSD:
+**[doc]** Dos comprobaciones **antes de generar cada registro**, que no se deducen
+de ningún XSD:
 
 > 1.º El último registro de facturación generado está correctamente encadenado.
 > 2.º La fecha y hora de generación del último registro de facturación generado
 > no es superior en más de un minuto a la fecha y hora actuales que se utilizarán
 > para fechar el registro de facturación a generar.
 
-Qué hay que comprobar exactamente en la primera, según las propias FAQs: que el
-campo `Huella` del `RegistroAnterior` del RF n-1 **se corresponde con la huella
-del RF n-2**. Es decir, se mira un eslabón hacia atrás, no la cadena entera.
+En la primera se mira **un eslabón hacia atrás**, no la cadena entera: que la
+`Huella` del `RegistroAnterior` del RF n-1 se corresponda con la huella del RF
+n-2.
 
-Sobre la segunda, la redacción confunde y las FAQs lo aclaran: lo normal es que
-pase mucho más de un minuto entre registros y **eso no es problema**. Lo que no se
-admite es que el registro que se va a generar tenga fecha y hora *anterior* en más
-de un minuto al ya generado. O sea: es un control de que el reloj no va hacia
+La segunda confunde y las FAQs lo aclaran: que pasen horas entre registros **no es
+problema**. Lo que no se admite es que el registro a generar tenga fecha anterior
+en más de un minuto al ya generado. Es un control de que el reloj no va hacia
 atrás, no de que factures rápido.
 
-### Y lo más importante: detectar una anomalía NO puede parar la caja
+**Y lo más importante: detectar una anomalía NO puede parar la caja.**
 
 > será preciso generar el siguiente RF, ya que la facturación por este motivo
 > **NUNCA debe interrumpirse**
-
-Es contraintuitivo para quien viene de programar validaciones: ante una cadena
-mal encadenada, el SIF **avisa y sigue facturando**. Lanzar una excepción dejaría
-a un comercio sin poder cobrar por un problema de trazabilidad, que es peor
-remedio que la enfermedad.
 
 Conviene no confundir dos clases de fallo:
 
@@ -629,131 +397,77 @@ Conviene no confundir dos clases de fallo:
 Las FAQs añaden que el orden de generación debe seguir el orden cronológico de
 expedición, lo que encaja con serializar bajo lock.
 
-## La consulta también es el plan de recuperación ante desastre
+## Recuperación ante desastre
 
-Si se pierde la base de datos local a mitad de año, el comercio **no queda
-vendido**, y hay dos salidas:
+**[doc]** Si se pierde la base de datos local a mitad de año hay dos salidas:
 
 1. **Recuperar el último eslabón desde la AEAT.** La consulta devuelve, de cada
    registro, su `Huella` y su `FechaHoraHusoGenRegistro`. El de marca temporal
    mayor es el último de la cadena, y con su `IDFactura` + `Huella` se reanuda.
    Solo vale en modalidad VERI\*FACTU, que es donde la AEAT los conserva.
 2. **No recuperarlo: abrir instalación nueva.** Reinstalar exige un nº de
-   instalación nuevo (las FAQs lo dicen explícitamente incluso para el mismo
-   software en el mismo ordenador), y una instalación nueva arranca su propia
-   cadena con `PrimerRegistro="S"`.
+   instalación nuevo, y una instalación nueva arranca su propia cadena con
+   `PrimerRegistro="S"`.
 
 De aquí sale una idea que ordena bastante: **la cadena no es un hilo eterno del
 contribuyente, es por instalación**. Romperla no es un pecado irreparable; es
 motivo para abrir una instalación nueva. Lo que sí es irreparable es reutilizar un
 número de factura, y eso sí lo detecta la AEAT.
 
-### Corolario: la gema NUNCA debe generar un nº de instalación por su cuenta
+## Respuestas y errores del servicio
 
-Si abrir una instalación nueva es gratis y legítimo, ¿qué impide sumar 1 al nº de
-instalación en cada factura y no encadenar nunca? **Técnicamente, nada**: cada
-registro saldría `PrimerRegistro="S"` y la AEAT lo aceptaría. Es el tercer caso del
-mismo patrón, junto con la cadena bifurcada y la huella incorrecta.
+**[doc]** Estados: `EstadoEnvio` (Correcto / ParcialmenteCorrecto / Incorrecto),
+`EstadoRegistro` (Correcto / AceptadoConErrores / Incorrecto) y
+`EstadoRegistroDuplicado` (Correcta / AceptadaConErrores / Anulada). La consulta
+usa otros: Correcto, AceptadoConErrores y **Anulado**, que el canal de envío no
+sabe expresar.
 
-Lo que lo impide no es técnico:
+**[doc]** Solo hay que escapar `&` como `&amp;` y `<` como `&lt;`, lo que respalda
+la asimetría huella-cruda / XML-escapado. Ceros a la izquierda prohibidos en
+numéricos, irrelevantes tras el separador decimal.
 
-- Las FAQs prohíben que la identidad del SIF cambie "con cada factura ni con cada
-  sesión o arranque del producto": se elige antes y permanece.
-- La trazabilidad es obligación legal del **productor**, no solo del usuario
-  (art. 29.2.j LGT), y certificar por declaración responsable un SIF que no cumple
-  el RD 1007/2023 es sancionable.
-- Y destruiría el valor para el propio comerciante: una cadena de longitud uno no
-  demuestra que nadie borró una factura, que es justo lo que la cadena le aporta.
+**[real] Los fallos de servicio llegan como SOAP Fault**, no como
+`RespuestaSuministro`, con el código dentro de `faultstring` en el formato
+`Codigo[NNNN].descripción`.
 
-Consecuencia de diseño, y es una regla dura: **la capa Rails no autogenera nunca
-un `NumeroInstalacion`**. Ni al arrancar, ni al ver que falta, ni por comodidad.
-Si lo hiciera, un contenedor que se recrea en cada despliegue produciría ese mismo
-patrón sin que nadie lo hubiera decidido. Abrir una instalación es un acto
-deliberado de quien despliega, y tiene que constar como tal.
+**[real] La identificación del obligado es por el PAR NIF + NombreRazon.** Con el
+NIF correcto y un nombre que no cuadre con el censo, la AEAT responde `4104` "el
+NIF no está identificado", que apunta al campo equivocado; el detalle del error sí
+devuelve los dos campos. Lo mismo para el destinatario, con el código `1239`. Un
+NIF con dígito de control incorrecto da `4116`.
 
-## La capa Rails, ejercitada contra el servicio real
+**[real]** Un sobre SOAP con dos declaraciones XML devuelve `Codigo[102].Error
+interno en el servidor`: es un fallo de parseo, no de negocio, y el mensaje no
+orienta en absoluto.
 
-La campaña anterior probó el *protocolo* construyendo los registros a mano. Esto
-prueba el *código* que se va a usar: anotar bajo lock, guardar el fragmento XML,
-generar el QR y remitir por lotes leyendo de la base de datos. Ejecutado el
-07-08-2026 sobre una instalación nueva, dos altas encadenadas en un solo envío:
+**[real]** Estos códigos existen como error propio de la AEAT, lo que respalda las
+validaciones implementadas leyendo el ap. 15:
 
-```
-Correcto (2 registros en este envío: 2 anotados, 0 a subsanar, 0 rechazados)
-```
+| Código | Regla |
+|---|---|
+| 1237 | N1/N2 con IVA no admiten tipo, cuota ni recargo |
+| 1238 | Una exenta no admite esos cuatro campos |
+| 1245 | `ClaveRegimen` obligatoria con IVA/IPSI/IGIC |
+| 1232-1234 | Reglas cruzadas de `IDType` y `CodigoPais` |
+| 1235-1236 | Ventanas temporales de `TipoImpositivo` |
 
-Lo que confirma, por orden de importancia:
+**[doc]** WSDL de pruebas:
+`https://prewww2.aeat.es/static_files/common/internet/dep/aplicaciones/es/aeat/tikeV1.0/cont/ws/SistemaFacturacion.wsdl`
 
-- **Guardar el XML hecho, en vez de reconstruirlo al enviar, funciona.** El
-  `0 a subsanar` es la parte que importa: la AEAT recalculó la huella sobre lo que
-  recibió y cuadró. Cualquier deriva entre lo que se calculó al anotar y lo que se
-  envió después habría aparecido justo ahí, como error admisible escondido detrás
-  de un `Correcto`, y no como un fallo ruidoso.
-- **El lote con encadenamiento interno pasa leyendo de la tabla**, no solo
-  construido en memoria como en la campaña.
-- **El control de flujo funciona de punta a punta.** La segunda remesa devolvió
-  `:esperando` sin abrir conexión.
+## Lo que sigue sin comprobarse
 
-Y un quinto dato de `TiempoEsperaEnvio`: el envío fue a las 17:59:42 UTC y la
-espera quedó en 18:00:42, o sea **60 s** otra vez. Con cinco medidas consistentes
-(lotes de 1, 2 y 3 registros) ya no parece casualidad, pero sigue siendo
-preproducción: no se ha medido en producción y la AEAT lo devuelve en cada
-respuesta precisamente porque puede variarlo.
+- **El certificado de sello** y su endpoint (`prewww10`/`www10`). No hay forma
+  barata de probarlo: la AEAT no emite certificados de prueba.
+- **El cotejo del SIF en servidor**, por la premisa que falta (ver arriba).
+- **Las operativas de subsanación por rechazo y de anulación sin registro
+  previo**, que la gema no construye.
+- **Los caminos de rechazo**: una factura válida no los recorre, así que las
+  validaciones de error solo están ejercitadas contra los tests propios.
 
-## La reconciliación, contra el servicio real (el filtro por SIF, probablemente sí)
+## Nota operativa
 
-Ejecutado el 10-08-2026 sobre una instalación nueva (`REMESA-20260810112115`,
-NIF 89890001K), dos altas encadenadas y remitidas, y a continuación
-`Reconciliacion#revisar(ejercicio: 2026, periodo: 8)`:
-
-```
-2026-08: 2 facturas locales, 2 filas de la AEAT, 0 divergencias
-```
-
-De las dos suposiciones que llevaba el código, una queda cerrada y la otra solo
-a medias:
-
-- **El cotejo del `SistemaInformatico` lo aplica el servidor: PROBABLE, no
-  comprobado.** El razonamiento es indirecto: la campaña del 07-08-2026 dejó 4
-  facturas anotadas bajo el mismo NIF y el mismo periodo de imputación (2026-08)
-  en otra instalación (`CAMP-20260807115225`), y la consulta de hoy, filtrada,
-  devolvió solo las 2 de esta instalación. Si no hubiera cotejo en servidor
-  habrían vuelto las 6.
-
-  **La premisa que falta:** que esas 4 siguieran almacenadas el 10-08-2026. No se
-  ha verificado. Preproducción es un entorno de pruebas sin trascendencia
-  tributaria y nada garantiza que no purguen datos, así que "las purgaron entre
-  el 7 y el 10" explica lo observado exactamente igual de bien. Tres días es poco
-  para una purga y por eso el filtro sigue siendo la explicación más probable,
-  pero probable no es comprobado.
-
-  Se cierra con una consulta de solo lectura: pedir el periodo 2026-08 con el SIF
-  de la campaña. Si vuelven las 4, el hallazgo queda firme. Si sale `SinDatos` no
-  prueba lo contrario por sí solo —podría ser un SIF que no coincide—, pero deja
-  la cuestión abierta, que es donde está.
-
-  Matiz de alcance: se filtra mandando el bloque `SistemaInformatico` **entero**,
-  así que esto demuestra que el conjunto discrimina, no qué campo lo hace. No se
-  ha probado si basta el `NumeroInstalacion` o si cuentan también nombre, id y
-  versión. Mientras no se sepa, mandarlo entero y **coincidiendo con el que se
-  usó al anotar** es obligatorio: con un SIF distinto la respuesta viene
-  `SinDatos`, y eso se disfraza de "no consta ninguna factura", que es la peor
-  forma de equivocarse aquí.
-
-  Por eso `Reconciliacion` filtra **además en cliente** por el
-  `NumeroInstalacion` que la AEAT devuelve en cada fila. Ahora se sabe que es
-  redundante, y se queda: el día que la AEAT cambie el cotejo, la reconciliación
-  seguirá siendo correcta en vez de inundarse de `:solo_en_aeat`.
-
-- **La AEAT imputa el periodo por FECHA DE EXPEDICIÓN.** Las dos facturas se
-  expidieron el 10-08-2026 y salieron consultando ejercicio 2026, periodo 08. Es
-  lo que asume `Reconciliacion#vigentes` al elegir qué facturas locales revisar.
-
-### Un aviso operativo que costó datos
-
-La suite de tests y los guiones de preproducción compartían base de datos
-(`verifactu_rails_test`), y `BaseDatos.limpiar!` borra cadenas y registros en
-cada `setup`. Un `rake test` se llevó por delante el libro local de la campaña
-del 07-08-2026; en la AEAT sigue anotada, pero el lado local con el que
-contrastarla ya no existe. Para las pruebas contra el servicio real, base de
-datos aparte (`VF_DATABASE_URL`).
+Los guiones de `examples/` contra preproducción y la suite de tests **no deben
+compartir base de datos**. La suite tira las tablas, las recrea y vacía cadenas y
+registros en cada test; correrla contra una base con datos de pruebas reales los
+destruye. La gema lo impide abortando si el nombre de la base no parece de tests,
+pero la separación conviene hacerla explícita con `VF_DATABASE_URL`.
