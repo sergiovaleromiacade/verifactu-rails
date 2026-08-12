@@ -17,6 +17,7 @@ Gem::Specification.new do |spec|
   TXT
 
   spec.license = 'MIT'
+  spec.homepage = 'https://github.com/sergiovaleromiacade/verifactu-rails'
 
   # >= 3.0 por la sintaxis de método endless usada en Transporte.
   spec.required_ruby_version = '>= 3.0'
@@ -44,6 +45,17 @@ Gem::Specification.new do |spec|
   ]
   spec.require_paths = ['lib']
 
+  # Son los enlaces de la barra lateral de rubygems.org. Sin ellos la ficha sale
+  # sin una sola forma de llegar al repositorio, que en esta gema es donde está
+  # casi todo el valor: el README, COMPLIANCE.md y doc/FUENTES.md.
+  #
+  # No se declara homepage_uri: repetiría spec.homepage y `gem build` avisa de
+  # que con dos claves apuntando a la misma URI solo se muestra la primera.
+  #
+  # changelog_uri se deja fuera a propósito: no hay CHANGELOG, y apuntar a un
+  # fichero que no existe es peor que no poner el enlace.
+  spec.metadata['source_code_uri'] = spec.homepage
+  spec.metadata['bug_tracker_uri'] = "#{spec.homepage}/issues"
   spec.metadata['rubygems_mfa_required'] = 'true'
 
   # Rango, no pin: fijar nokogiri a una versión exacta es justo lo que deja
